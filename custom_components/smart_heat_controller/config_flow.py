@@ -32,6 +32,7 @@ from .const import (
     CONF_MIN_ON_MINUTES,
     CONF_MIN_SAFETY_TEMP,
     CONF_OUTSIDE_TEMPERATURE_SENSOR,
+    CONF_PANEL_ENABLED,
     CONF_PRICE_OPTIMIZATION,
     CONF_PRICE_SENSOR,
     CONF_PRIMARY_CLIMATE,
@@ -58,6 +59,7 @@ from .const import (
     DEFAULT_MIN_ON_MINUTES,
     DEFAULT_MIN_SAFETY_TEMP,
     DEFAULT_NOMINAL_POWER,
+    DEFAULT_PANEL_ENABLED,
     DEFAULT_RADIATOR_OFF_ABOVE,
     DEFAULT_RADIATOR_ON_BELOW,
     DEFAULT_STALE_TIMEOUT_MINUTES,
@@ -540,6 +542,7 @@ class SmartHeatOptionsFlow(OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
+                "general",
                 "temperatures",
                 "presence",
                 "energy",
@@ -547,6 +550,23 @@ class SmartHeatOptionsFlow(OptionsFlow):
                 "price",
             ],
         )
+
+    async def async_step_general(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        current = self._merged()
+        if user_input is not None:
+            return await self._save(user_input)
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_PANEL_ENABLED,
+                    default=current.get(CONF_PANEL_ENABLED, DEFAULT_PANEL_ENABLED),
+                ): selector.BooleanSelector(),
+            }
+        )
+        return self.async_show_form(step_id="general", data_schema=schema)
 
     async def async_step_temperatures(
         self, user_input: dict[str, Any] | None = None

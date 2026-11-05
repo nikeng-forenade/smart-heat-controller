@@ -85,11 +85,18 @@
       "init": {
         "title": "Smart Heat Controller options",
         "menu_options": {
+          "general": "General",
           "temperatures": "Temperatures and timing",
           "presence": "Presence",
           "energy": "Energy measurement",
           "safety": "Safety and fallback",
           "price": "Electricity price"
+        }
+      },
+      "general": {
+        "title": "General",
+        "data": {
+          "panel_enabled": "Show Smart Heat in the sidebar"
         }
       },
       "temperatures": {

@@ -85,11 +85,18 @@
       "init": {
         "title": "Inställningar för Smart Heat Controller",
         "menu_options": {
+          "general": "Allmänt",
           "temperatures": "Temperaturer och tider",
           "presence": "Närvaro",
           "energy": "Energimätning",
           "safety": "Säkerhet och fallback",
           "price": "Elpris"
+        }
+      },
+      "general": {
+        "title": "Allmänt",
+        "data": {
+          "panel_enabled": "Visa Smart Heat i sidopanelen"
         }
       },
       "temperatures": {
@@ -143,51 +150,130 @@
   },
   "entity": {
     "sensor": {
-      "room_temperature": { "name": "Rumstemperatur" },
-      "outside_temperature": { "name": "Utetemperatur" },
-      "radiator_power": { "name": "Elementets effekt" },
-      "heatpump_power": { "name": "Värmepumpens effekt" },
-      "radiator_energy_today": { "name": "Elementets energi idag" },
-      "heatpump_energy_today": { "name": "Värmepumpens energi idag" },
-      "heating_energy_today": { "name": "Värmeenergi idag" },
-      "heating_energy_week": { "name": "Värmeenergi denna vecka" },
-      "heating_energy_month": { "name": "Värmeenergi denna månad" },
-      "cost_today": { "name": "Värmekostnad idag" },
-      "cost_week": { "name": "Värmekostnad denna vecka" },
-      "cost_month": { "name": "Värmekostnad denna månad" },
-      "baseline_average": { "name": "Baslinjesnitt" },
-      "comparison_average": { "name": "Jämförelsesnitt" },
-      "savings": { "name": "Besparing" },
-      "data_coverage": { "name": "Mätningstäckning" },
-      "last_decision": { "name": "Senaste beslut" }
+      "room_temperature": {
+        "name": "Rumstemperatur"
+      },
+      "outside_temperature": {
+        "name": "Utetemperatur"
+      },
+      "radiator_power": {
+        "name": "Elementets effekt"
+      },
+      "heatpump_power": {
+        "name": "Värmepumpens effekt"
+      },
+      "radiator_energy_today": {
+        "name": "Elementets energi idag"
+      },
+      "heatpump_energy_today": {
+        "name": "Värmepumpens energi idag"
+      },
+      "heating_energy_today": {
+        "name": "Värmeenergi idag"
+      },
+      "heating_energy_week": {
+        "name": "Värmeenergi denna vecka"
+      },
+      "heating_energy_month": {
+        "name": "Värmeenergi denna månad"
+      },
+      "cost_today": {
+        "name": "Värmekostnad idag"
+      },
+      "cost_week": {
+        "name": "Värmekostnad denna vecka"
+      },
+      "cost_month": {
+        "name": "Värmekostnad denna månad"
+      },
+      "baseline_average": {
+        "name": "Baslinjesnitt"
+      },
+      "comparison_average": {
+        "name": "Jämförelsesnitt"
+      },
+      "savings": {
+        "name": "Besparing"
+      },
+      "data_coverage": {
+        "name": "Mätningstäckning"
+      },
+      "last_decision": {
+        "name": "Senaste beslut"
+      }
     },
-    "climate": { "zone_thermostat": { "name": "Termostat" } },
-    "select": { "mode": { "name": "Driftläge", "state": {} } },
+    "climate": {
+      "zone_thermostat": {
+        "name": "Termostat"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Driftläge",
+        "state": {}
+      }
+    },
     "number": {
-      "home_target": { "name": "Hemma-temperatur" },
-      "away_target": { "name": "Borta-temperatur" },
-      "radiator_on_below": { "name": "Element på under" },
-      "radiator_off_above": { "name": "Element av över" },
-      "min_safety_temp": { "name": "Lägsta säkerhetstemperatur" },
-      "hysteresis": { "name": "Hysteres" },
-      "min_on_minutes": { "name": "Minsta ON-tid" },
-      "min_off_minutes": { "name": "Minsta OFF-tid" }
+      "home_target": {
+        "name": "Hemma-temperatur"
+      },
+      "away_target": {
+        "name": "Borta-temperatur"
+      },
+      "radiator_on_below": {
+        "name": "Element på under"
+      },
+      "radiator_off_above": {
+        "name": "Element av över"
+      },
+      "min_safety_temp": {
+        "name": "Lägsta säkerhetstemperatur"
+      },
+      "hysteresis": {
+        "name": "Hysteres"
+      },
+      "min_on_minutes": {
+        "name": "Minsta ON-tid"
+      },
+      "min_off_minutes": {
+        "name": "Minsta OFF-tid"
+      }
     },
     "binary_sensor": {
-      "presence": { "name": "Närvaro" },
-      "fault": { "name": "Fel" },
-      "heatpump_available": { "name": "Värmepumpens anslutning" },
-      "radiator_available": { "name": "Elementets anslutning" },
-      "temperature_stale": { "name": "Temperaturdataproblem" },
-      "power_anomaly": { "name": "Effektavvikelse" }
+      "presence": {
+        "name": "Närvaro"
+      },
+      "fault": {
+        "name": "Fel"
+      },
+      "heatpump_available": {
+        "name": "Värmepumpens anslutning"
+      },
+      "radiator_available": {
+        "name": "Elementets anslutning"
+      },
+      "temperature_stale": {
+        "name": "Temperaturdataproblem"
+      },
+      "power_anomaly": {
+        "name": "Effektavvikelse"
+      }
     },
     "button": {
-      "start_baseline": { "name": "Starta baslinje" },
-      "stop_baseline": { "name": "Avsluta baslinje" },
-      "refresh": { "name": "Uppdatera nu" }
+      "start_baseline": {
+        "name": "Starta baslinje"
+      },
+      "stop_baseline": {
+        "name": "Avsluta baslinje"
+      },
+      "refresh": {
+        "name": "Uppdatera nu"
+      }
     },
     "switch": {
-      "dry_run": { "name": "Torrkörning" }
+      "dry_run": {
+        "name": "Torrkörning"
+      }
     }
   },
   "selector": {
@@ -200,10 +286,25 @@
     }
   },
   "services": {
-    "start_baseline": { "name": "Starta baslinje", "description": "Börja registrera en förbrukningsbaslinje." },
-    "stop_baseline": { "name": "Avsluta baslinje", "description": "Stäng baslinjeperioden." },
-    "set_mode": { "name": "Sätt läge", "description": "Ändra styrenhetens läge, valfritt under begränsad tid." },
-    "clear_override": { "name": "Rensa överstyrning", "description": "Återgå till automatiskt läge." },
-    "export_csv": { "name": "Exportera CSV", "description": "Skriv dagliga aggregat till en CSV-fil." }
+    "start_baseline": {
+      "name": "Starta baslinje",
+      "description": "Börja registrera en förbrukningsbaslinje."
+    },
+    "stop_baseline": {
+      "name": "Avsluta baslinje",
+      "description": "Stäng baslinjeperioden."
+    },
+    "set_mode": {
+      "name": "Sätt läge",
+      "description": "Ändra styrenhetens läge, valfritt under begränsad tid."
+    },
+    "clear_override": {
+      "name": "Rensa överstyrning",
+      "description": "Återgå till automatiskt läge."
+    },
+    "export_csv": {
+      "name": "Exportera CSV",
+      "description": "Skriv dagliga aggregat till en CSV-fil."
+    }
   }
 }

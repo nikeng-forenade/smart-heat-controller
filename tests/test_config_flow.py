@@ -254,3 +254,34 @@ async def test_options_flow_updates_temperatures(hass: HomeAssistant, mock_entry
     assert mock_entry.options["home_target"] == 22.0
     coordinator = hass.data[DOMAIN][mock_entry.entry_id]
     assert coordinator.zone_config.home_target == 22.0
+
+
+async def test_options_flow_can_disable_the_panel(
+    hass: HomeAssistant, mock_entry
+) -> None:
+    async def _noop(call) -> None:
+        return None
+
+    hass.services.async_register("switch", "turn_on", _noop)
+    hass.services.async_register("switch", "turn_off", _noop)
+    hass.services.async_register("climate", "set_temperature", _noop)
+
+    mock_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+    assert "general" in result["menu_options"]
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "general"}
+    )
+    assert result["step_id"] == "general"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"panel_enabled": False}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_entry.options["panel_enabled"] is False
