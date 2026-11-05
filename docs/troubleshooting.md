@@ -71,19 +71,43 @@ By design, the setpoint is left alone when:
 
 Home Assistant's test harness targets Linux. `pytest-homeassistant-custom-component`
 pulls in `homeassistant.runner`, which imports the POSIX-only `fcntl` module, and
-the socket guard rejects the AF_INET socket pair Windows uses for the asyncio
-self-pipe.
+`homeassistant.util.resource` imports `resource`. Neither exists on Windows, so
+the harness cannot be imported at all. Separately, the socket guard rejects the
+AF_INET socket pair Windows uses for the asyncio self-pipe.
 
-Two shims make the suite runnable locally:
+Use the setup script — it handles both, from a clean clone:
 
-1. `fcntl.py` and `resource.py` stubs inside the virtual environment's
-   `site-packages` (never committed).
-2. `tests/conftest.py` wraps `socket.socketpair` so only the event loop's own
-   pipe is allowed.
+```powershell
+./scripts/setup_test_env.ps1                  # create venv, install, run all tests
+./scripts/setup_test_env.ps1 -TestArgs "-k", "energy" -v
+./scripts/setup_test_env.ps1 -Recreate        # rebuild .venv from scratch
+```
 
-For CI and for authoritative results, run the suite on Linux (GitHub Actions
-workflow included). The shims are test-environment only and do not affect the
-integration.
+What it does:
+
+1. Finds a Python 3.14 interpreter (uv's managed build, `python3.14`, or
+   `py -3.14`) and creates `.venv`. If an older `.venv` exists it is recreated.
+2. Installs `requirements_test.txt`.
+3. Installs `tests/win_shims` — a tiny package that provides `fcntl` and
+   `resource` stand-ins. It refuses to import on non-Windows platforms, so it can
+   never shadow the real modules. It is a normal pip package, **not** a file
+   copied into `site-packages`.
+4. Runs `pytest`.
+
+`tests/conftest.py` additionally wraps `socket.socketpair` so only the event
+loop's own self-pipe bypasses the socket guard; everything else stays blocked.
+
+If Python 3.14 is missing the script stops with instructions:
+
+```powershell
+winget install --id Python.Python.3.14 --scope user
+# or
+uv python install 3.14
+```
+
+For CI and authoritative results the suite also runs on Linux (see
+`.github/workflows/tests.yaml`). The shims are a local test convenience only and
+have no effect on the integration.
 
 ## Debug logging
 

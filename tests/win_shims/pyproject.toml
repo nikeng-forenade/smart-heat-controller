@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "windows-posix-shims"
+version = "0.1.0"
+description = "POSIX module stand-ins so the Home Assistant test harness runs on Windows"
+requires-python = ">=3.13"
+license = "MIT"
+
+[tool.setuptools]
+py-modules = ["fcntl", "resource"]

@@ -195,14 +195,26 @@ This software is **not** a safety thermostat.
 
 ## Development
 
-```bash
-python -m venv .venv
-.venv/Scripts/pip install -r requirements_test.txt
-.venv/Scripts/python -m pytest
+Home Assistant 2026.10 requires **Python 3.14**.
+
+```powershell
+# Windows: creates/reuses .venv, installs deps and the POSIX shims, runs pytest
+./scripts/setup_test_env.ps1
+./scripts/setup_test_env.ps1 -TestArgs tests/test_energy.py -v
 ```
 
-Home Assistant's test harness requires Python 3.14 for HA 2026.10+. On Windows,
-see [docs/troubleshooting.md](docs/troubleshooting.md#running-the-tests-on-windows).
+```bash
+# Linux / macOS
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements_test.txt
+.venv/bin/python -m pytest
+```
+
+Why the Windows script installs extra shims: HA's test harness imports the
+POSIX-only modules `fcntl` and `resource`, so the harness cannot even be
+imported on Windows. `tests/win_shims` provides minimal stand-ins and is
+installed as a normal package — nothing is copied into `site-packages` by hand.
+See [docs/troubleshooting.md](docs/troubleshooting.md#running-the-tests-on-windows).
 
 ## License
 
