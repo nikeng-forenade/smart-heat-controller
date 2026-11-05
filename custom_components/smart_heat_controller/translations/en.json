@@ -1,0 +1,208 @@
+{
+  "title": "Smart Heat Controller",
+  "config": {
+    "flow_title": "Smart Heat Controller — {name}",
+    "step": {
+      "user": {
+        "title": "Heating zone",
+        "description": "Name the zone and optionally add an area and a photo for the dashboard.",
+        "data": {
+          "zone_name": "Zone name",
+          "area": "Area (m²)",
+          "image_url": "Zone image URL"
+        }
+      },
+      "primary": {
+        "title": "Primary heater",
+        "description": "Select the existing heat pump climate entity. Capabilities are detected, not assumed.",
+        "data": {
+          "primary_climate": "Heat pump (climate)"
+        }
+      },
+      "supplementary": {
+        "title": "Supplementary heater",
+        "description": "Select the switches that control the radiator, plus an optional power and energy sensor.",
+        "data": {
+          "supplementary_switches": "Radiator switch(es)",
+          "supplementary_power_sensor": "Power sensor (W)",
+          "supplementary_energy_sensor": "Energy sensor (kWh)",
+          "supplementary_nominal_power": "Nominal power (W)"
+        }
+      },
+      "temperature": {
+        "title": "Temperature source",
+        "data": {
+          "temperature_sensor": "Room temperature sensor",
+          "outside_temperature_sensor": "Outside temperature sensor",
+          "temperature_offset": "Temperature offset (°C)",
+          "stale_timeout": "Stale data timeout (min)"
+        }
+      },
+      "presence": {
+        "title": "Presence",
+        "description": "Brief WiFi dropouts never trigger an immediate Away transition.",
+        "data": {
+          "presence_entities": "Presence entities",
+          "absence_delay": "Absence delay (min)",
+          "arrival_confirm": "Arrival confirmation (min)",
+          "unknown_behavior": "Behaviour when presence is unknown"
+        }
+      },
+      "temperatures": {
+        "title": "Temperatures and safeguards",
+        "data": {
+          "home_target": "Heat pump target — home (°C)",
+          "away_target": "Heat pump target — away (°C)",
+          "radiator_on_below": "Radiator on below (°C)",
+          "radiator_off_above": "Radiator off above (°C)",
+          "min_safety_temp": "Minimum safety temperature (°C)",
+          "hysteresis": "Hysteresis (°C)",
+          "min_on_minutes": "Minimum ON time (min)",
+          "min_off_minutes": "Minimum OFF time (min)"
+        }
+      },
+      "review": {
+        "title": "Review",
+        "description": "{summary}\n\nDry run keeps the automation in shadow mode: decisions are computed and logged but no services are called."
+      }
+    },
+    "error": {
+      "entity_not_found": "The selected entity does not exist.",
+      "not_an_energy_sensor": "The selected entity is not an energy sensor.",
+      "unsupported_energy_unit": "Energy sensors must report Wh, kWh or MWh.",
+      "energy_sensor_needs_total_state_class": "The energy sensor must have state_class total or total_increasing.",
+      "not_a_power_sensor": "The selected entity is not a power sensor.",
+      "unsupported_power_unit": "Power sensors must report W or kW.",
+      "need_temperature_source": "Select a temperature sensor or a heat pump climate entity.",
+      "off_above_must_exceed_on_below": "The OFF threshold must be higher than the ON threshold.",
+      "hysteresis_too_large_for_band": "The hysteresis is wider than the ON/OFF band.",
+      "away_target_above_home_target": "The away target must not exceed the home target.",
+      "safety_above_away_target": "The safety temperature must not exceed the away target."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Heat Controller options",
+        "menu_options": {
+          "temperatures": "Temperatures and timing",
+          "presence": "Presence",
+          "energy": "Energy measurement",
+          "safety": "Safety and fallback",
+          "price": "Electricity price"
+        }
+      },
+      "temperatures": {
+        "title": "Temperatures and timing",
+        "data": {
+          "home_target": "Heat pump target — home (°C)",
+          "away_target": "Heat pump target — away (°C)",
+          "radiator_on_below": "Radiator on below (°C)",
+          "radiator_off_above": "Radiator off above (°C)",
+          "min_safety_temp": "Minimum safety temperature (°C)",
+          "hysteresis": "Hysteresis (°C)",
+          "min_on_minutes": "Minimum ON time (min)",
+          "min_off_minutes": "Minimum OFF time (min)"
+        }
+      },
+      "presence": {
+        "title": "Presence",
+        "data": {
+          "presence_entities": "Presence entities",
+          "absence_delay": "Absence delay (min)",
+          "arrival_confirm": "Arrival confirmation (min)",
+          "unknown_behavior": "Behaviour when presence is unknown"
+        }
+      },
+      "energy": {
+        "title": "Energy measurement",
+        "data": {
+          "supplementary_power_sensor": "Radiator power sensor (W)",
+          "supplementary_energy_sensor": "Radiator energy sensor (kWh)",
+          "heatpump_power_sensor": "Heat pump power sensor (W)",
+          "heatpump_energy_sensor": "Heat pump energy sensor (kWh)"
+        }
+      },
+      "safety": {
+        "title": "Safety and fallback",
+        "data": {
+          "fallback_radiator": "Radiator behaviour without valid temperature",
+          "backup_heating": "Backup heating when the heat pump is unavailable",
+          "dry_run": "Dry run (compute decisions, do not act)"
+        }
+      },
+      "price": {
+        "title": "Electricity price",
+        "data": {
+          "price_sensor": "Spot price sensor (SEK/kWh)",
+          "all_in_price": "All-in price (SEK/kWh)",
+          "price_optimization": "Enable price optimisation"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": { "name": "Room temperature" },
+      "outside_temperature": { "name": "Outside temperature" },
+      "radiator_power": { "name": "Radiator power" },
+      "heatpump_power": { "name": "Heat pump power" },
+      "radiator_energy_today": { "name": "Radiator energy today" },
+      "heatpump_energy_today": { "name": "Heat pump energy today" },
+      "heating_energy_today": { "name": "Heating energy today" },
+      "heating_energy_week": { "name": "Heating energy this week" },
+      "heating_energy_month": { "name": "Heating energy this month" },
+      "cost_today": { "name": "Heating cost today" },
+      "cost_week": { "name": "Heating cost this week" },
+      "cost_month": { "name": "Heating cost this month" },
+      "baseline_average": { "name": "Baseline average" },
+      "comparison_average": { "name": "Comparison average" },
+      "savings": { "name": "Savings" },
+      "data_coverage": { "name": "Measurement coverage" },
+      "last_decision": { "name": "Last decision" }
+    },
+    "select": { "mode": { "name": "Operating mode", "state": {} } },
+    "number": {
+      "home_target": { "name": "Home target" },
+      "away_target": { "name": "Away target" },
+      "radiator_on_below": { "name": "Radiator on below" },
+      "radiator_off_above": { "name": "Radiator off above" },
+      "min_safety_temp": { "name": "Minimum safety temperature" },
+      "hysteresis": { "name": "Hysteresis" },
+      "min_on_minutes": { "name": "Minimum ON time" },
+      "min_off_minutes": { "name": "Minimum OFF time" }
+    },
+    "binary_sensor": {
+      "presence": { "name": "Presence" },
+      "fault": { "name": "Fault" },
+      "heatpump_available": { "name": "Heat pump connection" },
+      "radiator_available": { "name": "Radiator connection" },
+      "temperature_stale": { "name": "Temperature data problem" },
+      "power_anomaly": { "name": "Power anomaly" }
+    },
+    "button": {
+      "start_baseline": { "name": "Start baseline" },
+      "stop_baseline": { "name": "Stop baseline" },
+      "refresh": { "name": "Refresh now" }
+    },
+    "switch": {
+      "dry_run": { "name": "Dry run" }
+    }
+  },
+  "selector": {
+    "unknown_behavior": {
+      "options": {
+        "keep_last": "Keep the last known mode",
+        "home": "Treat as home",
+        "away": "Treat as away"
+      }
+    }
+  },
+  "services": {
+    "start_baseline": { "name": "Start baseline", "description": "Begin recording a consumption baseline." },
+    "stop_baseline": { "name": "Stop baseline", "description": "Close the baseline period." },
+    "set_mode": { "name": "Set mode", "description": "Change the controller mode, optionally for a limited time." },
+    "clear_override": { "name": "Clear override", "description": "Return to automatic mode." },
+    "export_csv": { "name": "Export CSV", "description": "Write daily aggregates to a CSV file." }
+  }
+}

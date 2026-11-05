@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+frontend/.vite/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+
+# Local scratch
+_extracted/
+_demo/
+*.log
+
+# NOTE: custom_components/smart_heat_controller/frontend/dist IS committed.
+# HACS installs the integration from the repository directly and the card
+# bundle must be present at install time.

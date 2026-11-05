@@ -1,0 +1,9 @@
+title: Smart Heat
+views:
+  - title: Smart Heat
+    path: smart-heat
+    icon: mdi:fire
+    type: panel
+    cards:
+      - type: custom:smart-heat-dashboard
+        # entry_id: <paste the config entry id here when running multiple zones>

@@ -1,0 +1,73 @@
+start_baseline:
+  name: Start baseline
+  description: Begin recording a consumption baseline for this zone.
+  fields:
+    entry_id:
+      name: Zone
+      description: Config entry id. Required when more than one zone exists.
+      required: false
+      selector:
+        text:
+
+stop_baseline:
+  name: Stop baseline
+  description: Close the current baseline period.
+  fields:
+    entry_id:
+      name: Zone
+      required: false
+      selector:
+        text:
+
+set_mode:
+  name: Set mode
+  description: Change the controller mode, optionally for a limited time.
+  fields:
+    entry_id:
+      name: Zone
+      required: false
+      selector:
+        text:
+    mode:
+      name: Mode
+      required: true
+      selector:
+        select:
+          options:
+            - auto
+            - home
+            - away
+            - comfort
+            - eco
+            - boost
+            - manual
+            - disabled
+    duration:
+      name: Duration
+      description: Minutes before the previous mode is restored. 0 means permanent.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1440
+          unit_of_measurement: min
+
+clear_override:
+  name: Clear override
+  description: Return the zone to automatic mode.
+  fields:
+    entry_id:
+      name: Zone
+      required: false
+      selector:
+        text:
+
+export_csv:
+  name: Export CSV
+  description: Write daily aggregates to a CSV file in the Home Assistant config folder.
+  fields:
+    entry_id:
+      name: Zone
+      required: false
+      selector:
+        text:

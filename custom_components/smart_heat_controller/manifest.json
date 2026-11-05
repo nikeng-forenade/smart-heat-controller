@@ -1,0 +1,12 @@
+{
+  "domain": "smart_heat_controller",
+  "name": "Smart Heat Controller",
+  "codeowners": ["@sagahus"],
+  "config_flow": true,
+  "documentation": "https://github.com/sagahus/smart-heat-controller",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/sagahus/smart-heat-controller/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

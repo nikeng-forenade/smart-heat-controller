@@ -1,0 +1,208 @@
+{
+  "title": "Smart Heat Controller",
+  "config": {
+    "flow_title": "Smart Heat Controller — {name}",
+    "step": {
+      "user": {
+        "title": "Värmzon",
+        "description": "Namnge zonen och lägg eventuellt till area och en bild till dashboarden.",
+        "data": {
+          "zone_name": "Zonnamn",
+          "area": "Area (m²)",
+          "image_url": "Bild-URL för zonen"
+        }
+      },
+      "primary": {
+        "title": "Primär värmekälla",
+        "description": "Välj den befintliga värmepumpens climate-entitet. Kapabiliteter detekteras, de antas inte.",
+        "data": {
+          "primary_climate": "Värmepump (climate)"
+        }
+      },
+      "supplementary": {
+        "title": "Kompletterande värme",
+        "description": "Välj brytarna som styr elementet, samt valfri effekt- och energigivare.",
+        "data": {
+          "supplementary_switches": "Elementbrytare",
+          "supplementary_power_sensor": "Effektgivare (W)",
+          "supplementary_energy_sensor": "Energigivare (kWh)",
+          "supplementary_nominal_power": "Nominell effekt (W)"
+        }
+      },
+      "temperature": {
+        "title": "Temperaturkälla",
+        "data": {
+          "temperature_sensor": "Rumstemperaturgivare",
+          "outside_temperature_sensor": "Utetemperaturgivare",
+          "temperature_offset": "Temperaturkorrigering (°C)",
+          "stale_timeout": "Tidsgräns för gammal data (min)"
+        }
+      },
+      "presence": {
+        "title": "Närvaro",
+        "description": "Korta WiFi-avbrott utlöser aldrig en omedelbar Borta-övergång.",
+        "data": {
+          "presence_entities": "Närvaroentiteter",
+          "absence_delay": "Fördröjning innan Borta (min)",
+          "arrival_confirm": "Bekräftelse vid hemkomst (min)",
+          "unknown_behavior": "Beteende när närvaro är okänd"
+        }
+      },
+      "temperatures": {
+        "title": "Temperaturer och skydd",
+        "data": {
+          "home_target": "Värmepumpens börvärde — hemma (°C)",
+          "away_target": "Värmepumpens börvärde — borta (°C)",
+          "radiator_on_below": "Element på under (°C)",
+          "radiator_off_above": "Element av över (°C)",
+          "min_safety_temp": "Lägsta säkerhetstemperatur (°C)",
+          "hysteresis": "Hysteres (°C)",
+          "min_on_minutes": "Minsta ON-tid (min)",
+          "min_off_minutes": "Minsta OFF-tid (min)"
+        }
+      },
+      "review": {
+        "title": "Granska",
+        "description": "{summary}\n\nTorrkörning håller automationen i skugg läge: beslut beräknas och loggas men inga tjänster anropas."
+      }
+    },
+    "error": {
+      "entity_not_found": "Den valda entiteten finns inte.",
+      "not_an_energy_sensor": "Den valda entiteten är ingen energigivare.",
+      "unsupported_energy_unit": "Energigivare måste rapportera Wh, kWh eller MWh.",
+      "energy_sensor_needs_total_state_class": "Energigivaren måste ha state_class total eller total_increasing.",
+      "not_a_power_sensor": "Den valda entiteten är ingen effektgivare.",
+      "unsupported_power_unit": "Effektgivare måste rapportera W eller kW.",
+      "need_temperature_source": "Välj en temperaturgivare eller en värmepump.",
+      "off_above_must_exceed_on_below": "AV-tröskeln måste vara högre än PÅ-tröskeln.",
+      "hysteresis_too_large_for_band": "Hysteresen är bredare än PÅ/AV-bandet.",
+      "away_target_above_home_target": "Borta-börvärdet får inte överstiga hemma-börvärdet.",
+      "safety_above_away_target": "Säkerhetstemperaturen får inte överstiga borta-börvärdet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Inställningar för Smart Heat Controller",
+        "menu_options": {
+          "temperatures": "Temperaturer och tider",
+          "presence": "Närvaro",
+          "energy": "Energimätning",
+          "safety": "Säkerhet och fallback",
+          "price": "Elpris"
+        }
+      },
+      "temperatures": {
+        "title": "Temperaturer och tider",
+        "data": {
+          "home_target": "Värmepumpens börvärde — hemma (°C)",
+          "away_target": "Värmepumpens börvärde — borta (°C)",
+          "radiator_on_below": "Element på under (°C)",
+          "radiator_off_above": "Element av över (°C)",
+          "min_safety_temp": "Lägsta säkerhetstemperatur (°C)",
+          "hysteresis": "Hysteres (°C)",
+          "min_on_minutes": "Minsta ON-tid (min)",
+          "min_off_minutes": "Minsta OFF-tid (min)"
+        }
+      },
+      "presence": {
+        "title": "Närvaro",
+        "data": {
+          "presence_entities": "Närvaroentiteter",
+          "absence_delay": "Fördröjning innan Borta (min)",
+          "arrival_confirm": "Bekräftelse vid hemkomst (min)",
+          "unknown_behavior": "Beteende när närvaro är okänd"
+        }
+      },
+      "energy": {
+        "title": "Energimätning",
+        "data": {
+          "supplementary_power_sensor": "Elementets effektgivare (W)",
+          "supplementary_energy_sensor": "Elementets energigivare (kWh)",
+          "heatpump_power_sensor": "Värmepumpens effektgivare (W)",
+          "heatpump_energy_sensor": "Värmepumpens energigivare (kWh)"
+        }
+      },
+      "safety": {
+        "title": "Säkerhet och fallback",
+        "data": {
+          "fallback_radiator": "Elementets beteende utan giltig temperatur",
+          "backup_heating": "Reservvärme när värmepumpen är otillgänglig",
+          "dry_run": "Torrkörning (beräkna beslut, agera inte)"
+        }
+      },
+      "price": {
+        "title": "Elpris",
+        "data": {
+          "price_sensor": "Spotprisgivare (SEK/kWh)",
+          "all_in_price": "Allt-i-pris (SEK/kWh)",
+          "price_optimization": "Aktivera prisoptimering"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": { "name": "Rumstemperatur" },
+      "outside_temperature": { "name": "Utetemperatur" },
+      "radiator_power": { "name": "Elementets effekt" },
+      "heatpump_power": { "name": "Värmepumpens effekt" },
+      "radiator_energy_today": { "name": "Elementets energi idag" },
+      "heatpump_energy_today": { "name": "Värmepumpens energi idag" },
+      "heating_energy_today": { "name": "Värmeenergi idag" },
+      "heating_energy_week": { "name": "Värmeenergi denna vecka" },
+      "heating_energy_month": { "name": "Värmeenergi denna månad" },
+      "cost_today": { "name": "Värmekostnad idag" },
+      "cost_week": { "name": "Värmekostnad denna vecka" },
+      "cost_month": { "name": "Värmekostnad denna månad" },
+      "baseline_average": { "name": "Baslinjesnitt" },
+      "comparison_average": { "name": "Jämförelsesnitt" },
+      "savings": { "name": "Besparing" },
+      "data_coverage": { "name": "Mätningstäckning" },
+      "last_decision": { "name": "Senaste beslut" }
+    },
+    "select": { "mode": { "name": "Driftläge", "state": {} } },
+    "number": {
+      "home_target": { "name": "Hemma-temperatur" },
+      "away_target": { "name": "Borta-temperatur" },
+      "radiator_on_below": { "name": "Element på under" },
+      "radiator_off_above": { "name": "Element av över" },
+      "min_safety_temp": { "name": "Lägsta säkerhetstemperatur" },
+      "hysteresis": { "name": "Hysteres" },
+      "min_on_minutes": { "name": "Minsta ON-tid" },
+      "min_off_minutes": { "name": "Minsta OFF-tid" }
+    },
+    "binary_sensor": {
+      "presence": { "name": "Närvaro" },
+      "fault": { "name": "Fel" },
+      "heatpump_available": { "name": "Värmepumpens anslutning" },
+      "radiator_available": { "name": "Elementets anslutning" },
+      "temperature_stale": { "name": "Temperaturdataproblem" },
+      "power_anomaly": { "name": "Effektavvikelse" }
+    },
+    "button": {
+      "start_baseline": { "name": "Starta baslinje" },
+      "stop_baseline": { "name": "Avsluta baslinje" },
+      "refresh": { "name": "Uppdatera nu" }
+    },
+    "switch": {
+      "dry_run": { "name": "Torrkörning" }
+    }
+  },
+  "selector": {
+    "unknown_behavior": {
+      "options": {
+        "keep_last": "Behåll senast kända läge",
+        "home": "Behandla som hemma",
+        "away": "Behandla som borta"
+      }
+    }
+  },
+  "services": {
+    "start_baseline": { "name": "Starta baslinje", "description": "Börja registrera en förbrukningsbaslinje." },
+    "stop_baseline": { "name": "Avsluta baslinje", "description": "Stäng baslinjeperioden." },
+    "set_mode": { "name": "Sätt läge", "description": "Ändra styrenhetens läge, valfritt under begränsad tid." },
+    "clear_override": { "name": "Rensa överstyrning", "description": "Återgå till automatiskt läge." },
+    "export_csv": { "name": "Exportera CSV", "description": "Skriv dagliga aggregat till en CSV-fil." }
+  }
+}
