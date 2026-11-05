@@ -14,6 +14,8 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 
+from .const import MAX_TARGET_TEMP
+
 
 class Mode(StrEnum):
     """User selectable operating modes."""
@@ -103,6 +105,8 @@ class ZoneSnapshot:
     radiator_available: bool = True
     radiator_is_on: bool = False
     heatpump_target: float | None = None
+    schedule_target: float | None = None
+    price_offset: float = 0.0
 
     def temperature_age(self) -> timedelta | None:
         if self.temperature_updated is None:
@@ -323,18 +327,55 @@ def _target_for_mode(config: ZoneConfig, mode: Mode) -> float:
             return config.home_target
 
 
-def _radiator_band(config: ZoneConfig, mode: Mode) -> tuple[float, float]:
-    """Return (on_below, off_above) thresholds for the effective mode."""
-    offset = 0.0
-    if mode is Mode.COMFORT:
-        offset = config.comfort_offset
-    elif mode is Mode.ECO:
-        offset = config.eco_offset
-    elif mode is Mode.BOOST:
-        offset = config.boost_offset
-    elif mode is Mode.AWAY:
+def base_target_for(
+    config: ZoneConfig, snapshot: ZoneSnapshot, mode: Mode
+) -> float:
+    """Setpoint before price adjustment.
+
+    When a weekly schedule is active it supplies the base for the occupied modes;
+    away behaviour always uses the away target.
+    """
+    scheduled = snapshot.schedule_target
+    if scheduled is not None and mode in (
+        Mode.HOME,
+        Mode.COMFORT,
+        Mode.ECO,
+        Mode.BOOST,
+    ):
+        match mode:
+            case Mode.COMFORT:
+                return scheduled + config.comfort_offset
+            case Mode.ECO:
+                return scheduled + config.eco_offset
+            case Mode.BOOST:
+                return scheduled + config.boost_offset
+            case _:
+                return scheduled
+    return _target_for_mode(config, mode)
+
+
+def effective_target(
+    config: ZoneConfig, snapshot: ZoneSnapshot, mode: Mode
+) -> float:
+    """Final setpoint after schedule and price optimisation, clamped to safety."""
+    target = base_target_for(config, snapshot, mode) + snapshot.price_offset
+    return max(config.min_safety_temp, min(target, MAX_TARGET_TEMP))
+
+
+def _radiator_band(
+    config: ZoneConfig, snapshot: ZoneSnapshot, mode: Mode
+) -> tuple[float, float]:
+    """Return (on_below, off_above) thresholds for the effective mode.
+
+    The band follows the setpoint: if the schedule or a comfort/eco/boost offset
+    moves the target, the radiator thresholds move with it so the two heat
+    sources cannot fight each other.
+    """
+    if mode is Mode.AWAY:
         return (float("-inf"), float("-inf"))
-    return (config.radiator_on_below + offset, config.radiator_off_above + offset)
+
+    delta = base_target_for(config, snapshot, mode) - config.home_target
+    return (config.radiator_on_below + delta, config.radiator_off_above + delta)
 
 
 # ---------------------------------------------------------------------------
@@ -448,12 +489,7 @@ def _evaluate_heatpump(
         # the heat pump keeps its own internal control running.
         return None
 
-    target = _target_for_mode(config, mode)
-    target = max(config.min_safety_temp, min(target, 30.0))
-
-    if mode is Mode.AWAY:
-        # Frost protection floor while away.
-        target = max(target, config.away_target)
+    target = effective_target(config, snapshot, mode)
 
     previous = state.heatpump_target_command
     if previous is not None and abs(previous - target) < 0.05:
@@ -499,7 +535,7 @@ def _evaluate_radiator(
             config, snapshot, state, True, safety=True, reason="backup_heating_for_missing_heatpump"
         )
 
-    on_below, off_above = _radiator_band(config, mode)
+    on_below, off_above = _radiator_band(config, snapshot, mode)
 
     if mode is Mode.AWAY:
         return _guard_switch(config, snapshot, state, False, reason="away")

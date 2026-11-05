@@ -161,6 +161,7 @@
       "data_coverage": { "name": "Mätningstäckning" },
       "last_decision": { "name": "Senaste beslut" }
     },
+    "climate": { "zone_thermostat": { "name": "Termostat" } },
     "select": { "mode": { "name": "Driftläge", "state": {} } },
     "number": {
       "home_target": { "name": "Hemma-temperatur" },

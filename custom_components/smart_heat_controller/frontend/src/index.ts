@@ -2,6 +2,7 @@
 
 import { SmartHeatDashboard } from "./dashboard";
 import "./energy-chart";
+import "./panel";
 import "./settings-drawer";
 
 declare global {

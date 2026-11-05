@@ -63,6 +63,43 @@ export interface SavingsPayload {
   limited_to_radiator: boolean;
   has_result: boolean;
   is_increase: boolean;
+  baseline_hdd?: number | null;
+  comparison_hdd?: number | null;
+  baseline_kwh_per_hdd?: number | null;
+  comparison_kwh_per_hdd?: number | null;
+  weather_adjusted_percent?: number | null;
+  weather_adjustment_available?: boolean;
+}
+
+export interface ScheduleSegment {
+  start: string;
+  target: number;
+}
+
+export interface SchedulePayload {
+  enabled: boolean;
+  weekday: ScheduleSegment[];
+  weekend: ScheduleSegment[];
+}
+
+export interface VacationPayload {
+  start: string | null;
+  end: string | null;
+  configured: boolean;
+}
+
+export interface PriceSettingsPayload {
+  enabled: boolean;
+  cheap_threshold: number | null;
+  expensive_threshold: number | null;
+  max_adjust: number;
+  min_comfort: number;
+}
+
+export interface PriceDecisionPayload {
+  offset: number;
+  state: string;
+  reason: string;
 }
 
 export interface BaselinePayload {
@@ -118,6 +155,11 @@ export interface ZonePayload {
   savings?: SavingsPayload | null;
   savings_warning?: string | null;
   baseline?: BaselinePayload;
+  schedule?: SchedulePayload;
+  schedule_target?: number | null;
+  vacation?: VacationPayload;
+  price_decision?: PriceDecisionPayload;
+  price_settings?: PriceSettingsPayload;
   series?: EnergySeries;
   settings?: {
     home_target: number | null;

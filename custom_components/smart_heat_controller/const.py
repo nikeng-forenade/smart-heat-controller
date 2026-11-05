@@ -11,6 +11,7 @@ VERSION: Final = "0.1.0"
 PLATFORMS: Final = (
     "binary_sensor",
     "button",
+    "climate",
     "number",
     "select",
     "sensor",
@@ -82,6 +83,21 @@ CONF_DRY_RUN: Final = "dry_run"
 CONF_PRICE_SENSOR: Final = "price_sensor"
 CONF_ALL_IN_PRICE: Final = "all_in_price"
 CONF_PRICE_OPTIMIZATION: Final = "price_optimization"
+CONF_PRICE_CHEAP: Final = "price_cheap"
+CONF_PRICE_EXPENSIVE: Final = "price_expensive"
+CONF_PRICE_MAX_ADJUST: Final = "price_max_adjust"
+CONF_PRICE_MIN_COMFORT: Final = "price_min_comfort"
+
+CONF_SCHEDULE: Final = "schedule"
+CONF_VACATION_START: Final = "vacation_start"
+CONF_VACATION_END: Final = "vacation_end"
+CONF_PANEL_ENABLED: Final = "panel_enabled"
+
+DEFAULT_PRICE_MAX_ADJUST: Final = 1.0
+DEFAULT_PRICE_MIN_COMFORT: Final = 18.0
+DEFAULT_PANEL_ENABLED: Final = True
+PANEL_URL_PATH: Final = "smart-heat"
+PANEL_COMPONENT: Final = "smart-heat-panel"
 
 # --- Services --------------------------------------------------------------
 SERVICE_START_BASELINE: Final = "start_baseline"

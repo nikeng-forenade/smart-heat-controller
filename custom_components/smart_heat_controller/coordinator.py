@@ -46,11 +46,17 @@ from .const import (
     CONF_MIN_ON_MINUTES,
     CONF_MIN_SAFETY_TEMP,
     CONF_OUTSIDE_TEMPERATURE_SENSOR,
+    CONF_PRICE_CHEAP,
+    CONF_PRICE_EXPENSIVE,
+    CONF_PRICE_MAX_ADJUST,
+    CONF_PRICE_MIN_COMFORT,
+    CONF_PRICE_OPTIMIZATION,
     CONF_PRICE_SENSOR,
     CONF_PRIMARY_CLIMATE,
     CONF_PRESENCE_ENTITIES,
     CONF_RADIATOR_OFF_ABOVE,
     CONF_RADIATOR_ON_BELOW,
+    CONF_SCHEDULE,
     CONF_STALE_TIMEOUT,
     CONF_SUPPLEMENTARY_ENERGY_SENSOR,
     CONF_SUPPLEMENTARY_NOMINAL_POWER,
@@ -59,7 +65,11 @@ from .const import (
     CONF_TEMPERATURE_OFFSET,
     CONF_TEMPERATURE_SENSOR,
     CONF_UNKNOWN_BEHAVIOR,
+    CONF_VACATION_END,
+    CONF_VACATION_START,
     CONF_ZONE_NAME,
+    DEFAULT_PRICE_MAX_ADJUST,
+    DEFAULT_PRICE_MIN_COMFORT,
     DOMAIN,
     LEDGER_RETENTION_DAYS,
     QUALITY_ESTIMATED,
@@ -81,7 +91,9 @@ from .controller import (
     ZoneConfig,
     ZoneSnapshot,
     ZoneState,
+    base_target_for,
     evaluate,
+    effective_target,
     update_presence,
 )
 from .energy import (
@@ -94,7 +106,16 @@ from .energy import (
     period_week,
     to_kwh,
 )
-from .price import PriceInfo, estimate_cost, resolve_price
+from .price import (
+    PriceDecision,
+    PriceInfo,
+    PriceSettings,
+    estimate_cost,
+    optimise_for_price,
+    resolve_price,
+)
+from .schedule import Vacation, WeeklySchedule, resolve as resolve_schedule
+from .weather import TemperatureLedger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -128,6 +149,8 @@ class ZoneData:
     savings: SavingsResult | None = None
     savings_warning: str | None = None
     outside_temperature: float | None = None
+    schedule_target: float | None = None
+    price_decision: PriceDecision = field(default_factory=PriceDecision)
     last_updated: datetime | None = None
 
 
@@ -158,6 +181,11 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         self._applying = False
         self._last_presence_raw = Presence.UNKNOWN
         self._loaded = False
+        self._schedule = WeeklySchedule()
+        self._vacation = Vacation()
+        self._temperatures = TemperatureLedger()
+        self._price_decision = PriceDecision()
+        self._schedule_target: float | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -213,6 +241,57 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             minutes=float(self.config_data.get(CONF_BOOST_DURATION, 60))
         )
 
+    @property
+    def schedule(self) -> WeeklySchedule:
+        return self._schedule
+
+    @property
+    def vacation(self) -> Vacation:
+        return self._vacation
+
+    @property
+    def temperature_ledger(self) -> TemperatureLedger:
+        return self._temperatures
+
+    @property
+    def price_decision(self) -> PriceDecision:
+        return self._price_decision
+
+    @property
+    def schedule_target(self) -> float | None:
+        return self._schedule_target
+
+    @property
+    def price_settings(self) -> PriceSettings:
+        conf = self.config_data
+        return PriceSettings(
+            enabled=bool(conf.get(CONF_PRICE_OPTIMIZATION, False)),
+            cheap_threshold=_opt_float(conf.get(CONF_PRICE_CHEAP)),
+            expensive_threshold=_opt_float(conf.get(CONF_PRICE_EXPENSIVE)),
+            max_adjust=float(
+                conf.get(CONF_PRICE_MAX_ADJUST, DEFAULT_PRICE_MAX_ADJUST)
+            ),
+            min_comfort=float(
+                conf.get(CONF_PRICE_MIN_COMFORT, DEFAULT_PRICE_MIN_COMFORT)
+            ),
+        )
+
+    @property
+    def effective_target(self) -> float | None:
+        """The setpoint the controller currently works towards."""
+        data = self.data
+        if data is None:
+            return None
+        return effective_target(
+            self.zone_config, data.snapshot, data.decision.effective_mode
+        )
+
+    def heatpump_heating(self) -> bool:
+        state = self._climate_state()
+        if state is None:
+            return False
+        return state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN, "off")
+
     def tracked_entities(self) -> list[str]:
         conf = self.config_data
         entities: list[str] = []
@@ -244,6 +323,11 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             self._state = ZoneState.from_dict(stored.get("zone"))
             self._ledger = EnergyLedger.from_dict(stored.get("ledger"))
             self._baseline = BaselinePeriod.from_dict(stored.get("baseline"))
+            self._schedule = WeeklySchedule.from_dict(stored.get("schedule"))
+            self._vacation = Vacation.from_dict(stored.get("vacation"))
+            self._temperatures = TemperatureLedger.from_dict(
+                stored.get("temperatures")
+            )
             self._radiator_counter = CounterTracker.from_dict(
                 stored.get("counters", {}).get("radiator") or {},
                 timedelta(hours=2),
@@ -310,6 +394,23 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             timedelta(minutes=float(conf.get(CONF_ABSENCE_DELAY, 30))),
             timedelta(minutes=float(conf.get(CONF_ARRIVAL_CONFIRM, 0))),
         )
+
+        # Vacation overrides presence, but only while the zone is in Auto so a
+        # deliberate manual mode is never silently undone.
+        if (
+            self._vacation.active(dt_util.as_local(now).date())
+            and self._state.selected_mode is Mode.AUTO
+        ):
+            confirmed = Presence.AWAY
+
+        self._schedule_target = resolve_schedule(self._schedule, now)
+        self._price_decision = optimise_for_price(
+            self._price_sensor_value(conf.get(CONF_PRICE_SENSOR)),
+            self.price_settings,
+            base_target=self._configured_base_target(confirmed, now),
+            presence_home=confirmed is Presence.HOME,
+        )
+
         snapshot = ZoneSnapshot(
             now=now,
             room_temperature=snapshot.room_temperature,
@@ -319,6 +420,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             radiator_available=snapshot.radiator_available,
             radiator_is_on=self._read_radiator_is_on(),
             heatpump_target=snapshot.heatpump_target,
+            schedule_target=self._schedule_target,
+            price_offset=self._price_decision.offset,
         )
 
         decision, new_state = evaluate(self.zone_config, snapshot, self._state)
@@ -336,6 +439,15 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
     # ------------------------------------------------------------------
     # Snapshot helpers
     # ------------------------------------------------------------------
+    def _configured_base_target(self, presence: Presence, now: datetime) -> float:
+        """Base setpoint used to bound the price offset."""
+        config = self.zone_config
+        if presence is Presence.AWAY:
+            return config.away_target
+        if self._schedule_target is not None:
+            return self._schedule_target
+        return config.home_target
+
     def _build_snapshot(self, now: datetime) -> ZoneSnapshot:
         conf = self.config_data
         temperature, updated = self._read_temperature()
@@ -533,6 +645,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
     # ------------------------------------------------------------------
     def _update_energy(self, now: datetime, snapshot: ZoneSnapshot) -> None:
         today = dt_util.as_local(now).date()
+        conf = self.config_data
 
         self._track_energy_source(
             SOURCE_RADIATOR,
@@ -553,6 +666,11 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             now,
         )
         self._ledger.prune(today, LEDGER_RETENTION_DAYS)
+
+        outside = self._read_float(conf.get(CONF_OUTSIDE_TEMPERATURE_SENSOR))
+        if outside is not None:
+            self._temperatures.add(today, outside)
+        self._temperatures.prune(today, LEDGER_RETENTION_DAYS)
 
     def _track_energy_source(
         self,
@@ -701,6 +819,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             today,
             source=SOURCE_TOTAL,
             heatpump_measured=heatpump_measured,
+            temperatures=self._temperatures,
         )
 
         return ZoneData(
@@ -717,6 +836,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             outside_temperature=self._read_float(
                 conf.get(CONF_OUTSIDE_TEMPERATURE_SENSOR)
             ),
+            schedule_target=self._schedule_target,
+            price_decision=self._price_decision,
             last_updated=now,
         )
 
@@ -750,6 +871,9 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             "zone": self._state.as_dict(),
             "ledger": self._ledger.as_dict(),
             "baseline": self._baseline.as_dict(),
+            "schedule": self._schedule.as_dict(),
+            "vacation": self._vacation.as_dict(),
+            "temperatures": self._temperatures.as_dict(),
             "counters": {
                 "radiator": self._radiator_counter.as_dict(),
                 "heatpump": self._heatpump_counter.as_dict(),
@@ -787,6 +911,18 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             self._state.selected_mode = mode
         await self.async_refresh()
 
+    async def async_set_schedule(self, schedule: WeeklySchedule) -> None:
+        """Persist a new weekly schedule (used by the settings UI)."""
+        self._schedule = schedule
+        await self.async_flush()
+        await self.async_refresh()
+
+    async def async_set_vacation(self, vacation: Vacation) -> None:
+        """Persist a vacation range (used by the settings UI)."""
+        self._vacation = vacation
+        await self.async_flush()
+        await self.async_refresh()
+
     async def async_start_baseline(self) -> None:
         today = dt_util.now().date()
         self._baseline = BaselinePeriod(start=today, end=None)
@@ -807,6 +943,13 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         """Persist any single option without reloading the integration."""
         options = dict(self.entry.options)
         options[key] = value
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        await self.async_refresh()
+
+    async def async_set_options(self, updates: dict[str, Any]) -> None:
+        """Persist several options at once (one entry update, one refresh)."""
+        options = dict(self.entry.options)
+        options.update(updates)
         self.hass.config_entries.async_update_entry(self.entry, options=options)
         await self.async_refresh()
 

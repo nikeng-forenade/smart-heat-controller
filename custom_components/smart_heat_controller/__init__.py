@@ -9,7 +9,12 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.frontend import (
+    add_extra_js_url,
+    async_panel_exists,
+    async_register_built_in_panel,
+    async_remove_panel,
+)
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -24,7 +29,16 @@ from .const import (
     ATTR_DURATION,
     ATTR_ENTRY_ID,
     ATTR_MODE,
+    CONF_PANEL_ENABLED,
+    CONF_PRICE_CHEAP,
+    CONF_PRICE_EXPENSIVE,
+    CONF_PRICE_MAX_ADJUST,
+    CONF_PRICE_MIN_COMFORT,
+    CONF_PRICE_OPTIMIZATION,
     DOMAIN,
+    NAME,
+    PANEL_COMPONENT,
+    PANEL_URL_PATH,
     PLATFORMS,
     SERVICE_CLEAR_OVERRIDE,
     SERVICE_EXPORT_CSV,
@@ -38,6 +52,7 @@ from .const import (
 from .controller import Mode
 from .coordinator import SmartHeatCoordinator
 from .energy import period_days
+from .schedule import Vacation, WeeklySchedule
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,6 +92,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     for platform in PLATFORMS:
         await hass.config_entries.async_forward_entry_setups(entry, [platform])
 
+    _async_register_panel(hass, coordinator)
+
     _LOGGER.info(
         "Smart Heat Controller %s started for zone %s (dry_run=%s)",
         VERSION,
@@ -95,6 +112,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_shutdown()
 
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        _async_remove_panel_if_unused(hass)
     return unloaded
 
 
@@ -114,14 +133,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
-    """Serve and register the dashboard card bundle once."""
+    """Serve the card bundle and register the optional sidebar panel once."""
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("frontend_registered"):
         return
 
     if hass.http is None:
-        # Home Assistant is running without the HTTP component (or this is a
-        # test harness); the backend keeps working without the card.
+        # Running without the HTTP component (or in a bare test harness); the
+        # backend keeps working, the card and panel are simply not available.
         return
 
     dist = Path(__file__).parent / "frontend" / "dist"
@@ -130,16 +149,78 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(FRONTEND_URL, str(dist), True)]
     )
+    domain_data["frontend_registered"] = True
 
-    if bundle.is_file():
-        add_extra_js_url(hass, f"{FRONTEND_URL}/{FRONTEND_FILE}")
-        domain_data["frontend_registered"] = True
-    else:
+    if not bundle.is_file():
         _LOGGER.warning(
             "Smart Heat Controller card bundle missing at %s; "
             "the dashboard card will not load until the frontend is built",
             bundle,
         )
+        return
+
+    if "frontend" not in hass.config.components:
+        _LOGGER.debug("frontend not loaded; skipping card registration")
+        return
+
+    try:
+        add_extra_js_url(hass, f"{FRONTEND_URL}/{FRONTEND_FILE}")
+    except (KeyError, AttributeError):  # pragma: no cover - defensive
+        _LOGGER.debug("frontend is not ready; the card was not registered")
+
+
+@callback
+def _async_register_panel(hass: HomeAssistant, coordinator: SmartHeatCoordinator) -> None:
+    """Add a sidebar entry that renders the dashboard.
+
+    Uses Home Assistant's own panel registration. The global sidebar is never
+    overridden; this only adds one item pointing at our own view.
+    """
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get("panel_registered"):
+        return
+    if "frontend" not in hass.config.components:
+        _LOGGER.debug("frontend not loaded; skipping the sidebar panel")
+        return
+    if not coordinator.config_data.get(CONF_PANEL_ENABLED, True):
+        return
+    if async_panel_exists(hass, PANEL_URL_PATH):
+        domain_data["panel_registered"] = True
+        return
+
+    async_register_built_in_panel(
+        hass,
+        component_name="custom",
+        sidebar_title=NAME,
+        sidebar_icon="mdi:fire",
+        frontend_url_path=PANEL_URL_PATH,
+        config={
+            "_panel_custom": {
+                "name": PANEL_COMPONENT,
+                "embed_iframe": False,
+                "trust_external": False,
+                "module_url": f"{FRONTEND_URL}/{FRONTEND_FILE}",
+            }
+        },
+        require_admin=False,
+    )
+    domain_data["panel_registered"] = True
+
+
+@callback
+def _async_remove_panel_if_unused(hass: HomeAssistant) -> None:
+    """Drop the sidebar entry when the last zone is removed."""
+    remaining = [
+        value
+        for value in hass.data.get(DOMAIN, {}).values()
+        if isinstance(value, SmartHeatCoordinator)
+    ]
+    if remaining:
+        return
+    if not hass.data.get(DOMAIN, {}).get("panel_registered"):
+        return
+    async_remove_panel(hass, PANEL_URL_PATH)
+    hass.data[DOMAIN]["panel_registered"] = False
 
 
 # ---------------------------------------------------------------------------
@@ -249,8 +330,101 @@ def _async_register_websocket(hass: HomeAssistant) -> None:
         ]
         connection.send_result(msg["id"], {"zones": zones})
 
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/set_schedule",
+            vol.Required(ATTR_ENTRY_ID): cv.string,
+            vol.Required("enabled"): cv.boolean,
+            vol.Optional("weekday", default=[]): [dict],
+            vol.Optional("weekend", default=[]): [dict],
+        }
+    )
+    @websocket_api.async_response
+    async def _ws_set_schedule(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+    ) -> None:
+        coordinator = _coordinator_for(hass, msg[ATTR_ENTRY_ID])
+        if coordinator is None:
+            connection.send_error(msg["id"], "not_found", "Unknown zone")
+            return
+        schedule = WeeklySchedule.from_dict(
+            {
+                "enabled": msg["enabled"],
+                "weekday": msg["weekday"],
+                "weekend": msg["weekend"],
+            }
+        )
+        await coordinator.async_set_schedule(schedule)
+        connection.send_result(msg["id"], {"schedule": schedule.as_dict()})
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/set_vacation",
+            vol.Required(ATTR_ENTRY_ID): cv.string,
+            vol.Optional("start"): vol.Any(None, cv.string),
+            vol.Optional("end"): vol.Any(None, cv.string),
+        }
+    )
+    @websocket_api.async_response
+    async def _ws_set_vacation(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+    ) -> None:
+        coordinator = _coordinator_for(hass, msg[ATTR_ENTRY_ID])
+        if coordinator is None:
+            connection.send_error(msg["id"], "not_found", "Unknown zone")
+            return
+        try:
+            vacation = Vacation.from_dict(
+                {"start": msg.get("start"), "end": msg.get("end")}
+            )
+        except ValueError:
+            connection.send_error(msg["id"], "invalid_date", "Use YYYY-MM-DD")
+            return
+        await coordinator.async_set_vacation(vacation)
+        connection.send_result(msg["id"], {"vacation": vacation.as_dict()})
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/set_price",
+            vol.Required(ATTR_ENTRY_ID): cv.string,
+            vol.Required("enabled"): cv.boolean,
+            vol.Optional("cheap"): vol.Any(None, vol.Coerce(float)),
+            vol.Optional("expensive"): vol.Any(None, vol.Coerce(float)),
+            vol.Optional("max_adjust"): vol.Any(None, vol.Coerce(float)),
+            vol.Optional("min_comfort"): vol.Any(None, vol.Coerce(float)),
+        }
+    )
+    @websocket_api.async_response
+    async def _ws_set_price(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+    ) -> None:
+        coordinator = _coordinator_for(hass, msg[ATTR_ENTRY_ID])
+        if coordinator is None:
+            connection.send_error(msg["id"], "not_found", "Unknown zone")
+            return
+        await coordinator.async_set_options(
+            {
+                CONF_PRICE_OPTIMIZATION: bool(msg["enabled"]),
+                CONF_PRICE_CHEAP: msg.get("cheap"),
+                CONF_PRICE_EXPENSIVE: msg.get("expensive"),
+                CONF_PRICE_MAX_ADJUST: msg.get("max_adjust"),
+                CONF_PRICE_MIN_COMFORT: msg.get("min_comfort"),
+            }
+        )
+        connection.send_result(msg["id"], {"ok": True})
+
     websocket_api.async_register_command(hass, _ws_zones)
+    websocket_api.async_register_command(hass, _ws_set_schedule)
+    websocket_api.async_register_command(hass, _ws_set_vacation)
+    websocket_api.async_register_command(hass, _ws_set_price)
     hass.data.setdefault(DOMAIN, {})["websocket_registered"] = True
+
+
+def _coordinator_for(
+    hass: HomeAssistant, entry_id: str
+) -> SmartHeatCoordinator | None:
+    coordinator = hass.data.get(DOMAIN, {}).get(entry_id)
+    return coordinator if isinstance(coordinator, SmartHeatCoordinator) else None
 
 
 ENTITY_DOMAINS: dict[str, str] = {
@@ -377,6 +551,15 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
         "savings": data.savings.as_dict() if data.savings else None,
         "savings_warning": data.savings_warning,
         "baseline": coordinator.baseline.as_dict(),
+        "schedule": coordinator.schedule.as_dict(),
+        "schedule_target": coordinator.schedule_target,
+        "vacation": coordinator.vacation.as_dict(),
+        "price_decision": {
+            "offset": data.price_decision.offset,
+            "state": data.price_decision.state,
+            "reason": data.price_decision.reason,
+        },
+        "price_settings": coordinator.price_settings.as_dict(),
         "series": _series(coordinator),
         "settings": {
             "home_target": config.get("home_target"),

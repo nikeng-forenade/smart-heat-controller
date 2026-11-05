@@ -1,3 +1,7 @@
 pytest-homeassistant-custom-component==0.13.375
 pytest==9.0.3
 pytest-asyncio==1.4.0
+# Lets the frontend component (and therefore the sidebar panel) be set up in
+# tests. The version must match the `home-assistant-frontend` pin in Home
+# Assistant's own components/frontend/manifest.json for the installed release.
+home-assistant-frontend==20260930.5

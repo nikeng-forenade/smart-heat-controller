@@ -39,6 +39,13 @@ build ZoneSnapshot        temperature, age, presence, availability, real switch 
         ▼
 update_presence()         debounce raw → confirmed (absence delay, arrival confirm)
         │
+        ├─ vacation active (Auto only) ─────────────► force Away
+        ▼
+resolve_schedule()        weekly segments → scheduled_target (or None)
+        │
+        ▼
+optimise_for_price()      cheap/expensive → small offset within comfort limits
+        │
         ▼
 expire_timers()           boost / timed override
         │
@@ -52,14 +59,34 @@ evaluate()                → Decision + new ZoneState
 apply()                   only calls a service when the state actually differs
         │
         ▼
-update_energy()           counter deltas into the daily ledger
+update_energy()           counter deltas into the daily ledger + outdoor temperature
         │
         ▼
-publish ZoneData          entities + WebSocket payload for the card
+publish ZoneData          entities, thermostat and WebSocket payload for the card
 ```
 
 `evaluate()` is deterministic: same config + snapshot + state always yields the
 same decision. That is what makes the controller testable.
+
+## Setpoint composition
+
+The heat pump target is built in three clearly separated steps:
+
+```text
+base      = schedule segment target (if enabled)  else  home/away/comfort/eco/boost
++ offset  = price optimisation (±max_adjust, bounded by min_comfort)
+= target  = clamp(base + offset, minimum_safety_temperature, 30 °C)
+```
+
+The radiator band moves with the base target:
+
+```text
+on_below = radiator_on_below + (base - home_target)
+off_above = radiator_off_above + (base - home_target)
+```
+
+That is why a 22:00 night setback to 18 °C also lowers the radiator thresholds by
+three degrees instead of letting the two heat sources fight each other.
 
 ## Decision precedence
 
@@ -145,12 +172,24 @@ Writes are debounced by 10 s and flushed on unload.
 
 ## Deliberate limitations
 
-- **No sidebar panel.** HA has no supported API for adding sidebar items from a
-  custom integration; a dedicated dashboard view is used instead.
-- **No `climate` proxy entity.** Creating one would mean two controllers fighting
-  over the same heat pump. The integration commands the existing entity.
-- **No schedule UI yet.** The state machine exposes `Comfort`/`Eco`/`Boost` and
-  timed overrides, but the weekly schedule (Phase 3) is not implemented; the card
-  does not pretend otherwise.
-- **No weather normalisation.** Outside temperature is context, not a correction
-  factor, until a transparent method is implemented.
+- **The sidebar item is added, never overridden.** Home Assistant's global
+  sidebar layout is untouched; the integration adds one entry (`Smart Heat`)
+  through `frontend.async_register_built_in_panel`, and removes it again when the
+  last zone is deleted. Registration is skipped entirely when the frontend
+  component is not available, so a headless backend still works.
+- **The `climate` entity is a zone thermostat, not a heat pump proxy.** It reads
+  the zone temperature and the effective target, and writing to it updates the
+  zone's own settings. It never commands the Mitsubishi directly, so there is no
+  second controller fighting over the pump. Control still flows through the
+  state machine.
+- **Weather normalisation is an estimate.** kWh per heating degree day (base
+  17 °C), computed from the configured outside sensor. It cannot correct for
+  solar gain, wind, internal gains or changed occupancy, and the UI says so.
+- **Price optimisation is deliberately timid.** At most `max_adjust` degrees of
+  preheating, only while somebody is home, never below the comfort floor. It is
+  off by default.
+- **The schedule has no calendar or holiday awareness.** Weekday/weekend
+  profiles plus vacation dates only. A public-holiday calendar is not modelled.
+- **No `climate` proxy around the pump** means integrations that write directly
+  to the Mitsubishi (e.g. its own scheduler) can still conflict with this
+  controller. Disable competing automations for the same device.

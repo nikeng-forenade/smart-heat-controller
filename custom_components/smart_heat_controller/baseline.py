@@ -18,6 +18,13 @@ from .const import (
     SOURCE_TOTAL,
 )
 from .energy import EnergyLedger, EnergyTotal
+from .weather import (
+    BASE_TEMP,
+    TemperatureLedger,
+    degree_days,
+    normalised_percent,
+    per_degree_day,
+)
 
 MIN_BASELINE_DAYS = 7
 MAX_BASELINE_DAYS = 14
@@ -84,6 +91,12 @@ class SavingsResult:
     comparison_start: date | None = None
     comparison_end: date | None = None
     limited_to_radiator: bool = False
+    baseline_hdd: float | None = None
+    comparison_hdd: float | None = None
+    baseline_kwh_per_hdd: float | None = None
+    comparison_kwh_per_hdd: float | None = None
+    weather_adjusted_percent: float | None = None
+    weather_adjustment_available: bool = False
 
     @property
     def has_result(self) -> bool:
@@ -111,11 +124,17 @@ class SavingsResult:
             "limited_to_radiator": self.limited_to_radiator,
             "has_result": self.has_result,
             "is_increase": self.is_increase,
+            "baseline_hdd": _round(self.baseline_hdd),
+            "comparison_hdd": _round(self.comparison_hdd),
+            "baseline_kwh_per_hdd": _round(self.baseline_kwh_per_hdd, 3),
+            "comparison_kwh_per_hdd": _round(self.comparison_kwh_per_hdd, 3),
+            "weather_adjusted_percent": _round(self.weather_adjusted_percent),
+            "weather_adjustment_available": self.weather_adjustment_available,
         }
 
 
-def _round(value: float | None) -> float | None:
-    return None if value is None else round(value, 2)
+def _round(value: float | None, digits: int = 2) -> float | None:
+    return None if value is None else round(value, digits)
 
 
 def _per_day(total: EnergyTotal) -> float | None:
@@ -139,6 +158,8 @@ def compare(
     *,
     source: str = SOURCE_RADIATOR,
     heatpump_measured: bool = True,
+    temperatures: TemperatureLedger | None = None,
+    outside_base: float = BASE_TEMP,
 ) -> SavingsResult:
     """Compare the most recent baseline-length window against the baseline.
 
@@ -198,7 +219,46 @@ def compare(
         result.baseline_quality = baseline_total.quality or QUALITY_INCOMPLETE
         result.comparison_quality = comparison_total.quality or QUALITY_INCOMPLETE
 
+    if temperatures is not None:
+        _apply_weather_normalisation(
+            result, temperatures, outside_base, baseline_total, comparison_total
+        )
+
     return result
+
+
+def _apply_weather_normalisation(
+    result: SavingsResult,
+    temperatures: TemperatureLedger,
+    base: float,
+    baseline_total: EnergyTotal,
+    comparison_total: EnergyTotal,
+) -> None:
+    """Add a weather-normalised view without touching the raw comparison."""
+    assert result.baseline_start and result.baseline_end  # noqa: S101
+    assert result.comparison_start and result.comparison_end  # noqa: S101
+
+    baseline_dd = degree_days(
+        temperatures, result.baseline_start, result.baseline_end, base
+    )
+    comparison_dd = degree_days(
+        temperatures, result.comparison_start, result.comparison_end, base
+    )
+
+    result.baseline_hdd = baseline_dd.hdd
+    result.comparison_hdd = comparison_dd.hdd
+
+    baseline_specific = per_degree_day(baseline_total.kwh, baseline_dd)
+    comparison_specific = per_degree_day(comparison_total.kwh, comparison_dd)
+
+    result.baseline_kwh_per_hdd = baseline_specific
+    result.comparison_kwh_per_hdd = comparison_specific
+    result.weather_adjusted_percent = normalised_percent(
+        baseline_specific, comparison_specific
+    )
+    result.weather_adjustment_available = (
+        baseline_specific is not None and comparison_specific is not None
+    )
 
 
 def baseline_ready(baseline: BaselinePeriod) -> bool:

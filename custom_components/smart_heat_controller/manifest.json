@@ -3,6 +3,7 @@
   "name": "Smart Heat Controller",
   "codeowners": ["@sagahus"],
   "config_flow": true,
+  "after_dependencies": ["frontend", "http"],
   "documentation": "https://github.com/sagahus/smart-heat-controller",
   "integration_type": "hub",
   "iot_class": "calculated",

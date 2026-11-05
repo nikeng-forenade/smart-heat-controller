@@ -161,6 +161,7 @@
       "data_coverage": { "name": "Measurement coverage" },
       "last_decision": { "name": "Last decision" }
     },
+    "climate": { "zone_thermostat": { "name": "Thermostat" } },
     "select": { "mode": { "name": "Operating mode", "state": {} } },
     "number": {
       "home_target": { "name": "Home target" },

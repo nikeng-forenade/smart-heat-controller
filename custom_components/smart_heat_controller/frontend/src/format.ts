@@ -58,6 +58,8 @@ const STRINGS = {
     options: "Alla inställningar",
     general: "Allmänt",
     temperatures: "Temperaturer",
+    schedule: "Schema",
+    price: "Elpris-optimering",
     energyMetering: "Energimätning",
     advanced: "Avancerat",
     dryRun: "Torrkörning",
@@ -124,6 +126,8 @@ const STRINGS = {
     options: "All settings",
     general: "General",
     temperatures: "Temperatures",
+    schedule: "Schedule",
+    price: "Price optimisation",
     energyMetering: "Energy metering",
     advanced: "Advanced",
     dryRun: "Dry run",
@@ -279,6 +283,34 @@ const REASON_LABELS: Record<string, { sv: string; en: string }> = {
   fallback_temperature_off: {
     sv: "Ingen giltig temperatur – felläge håller elementet AV.",
     en: "No valid temperature – fallback keeps the radiator OFF.",
+  },
+  price_optimisation_off: {
+    sv: "Prisoptimering är avstängd.",
+    en: "Price optimisation is off.",
+  },
+  no_price_available: {
+    sv: "Inget elpris tillgängligt.",
+    en: "No electricity price available.",
+  },
+  cheap_price_but_nobody_home: {
+    sv: "Billigt pris, men ingen är hemma – ingen förvärmning.",
+    en: "Cheap price, but nobody is home – no preheating.",
+  },
+  preheat_cheap_price: {
+    sv: "Billigt pris – börvärdet höjs försiktigt.",
+    en: "Cheap price – setpoint raised slightly.",
+  },
+  setback_blocked_by_comfort_floor: {
+    sv: "Dyrt pris, men komfortgolvet stoppar sänkningen.",
+    en: "Expensive price, but the comfort floor blocks the setback.",
+  },
+  setback_expensive_price: {
+    sv: "Dyrt pris – börvärdet sänks inom komfortgränsen.",
+    en: "Expensive price – setpoint lowered within the comfort limit.",
+  },
+  price_within_normal_range: {
+    sv: "Priset ligger inom normalt intervall.",
+    en: "Price is within the normal range.",
   },
 };
 

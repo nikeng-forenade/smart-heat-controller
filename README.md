@@ -22,6 +22,16 @@ Everything runs inside Home Assistant. No external server, no subscription.
 
 - **Explicit state machine** — `Auto`, `Home`, `Away`, `Comfort`, `Eco`, `Boost`,
   `Manual`, `Disabled`.
+- **Native thermostat** — a `climate` entity per zone with current temperature,
+  target, HVAC mode and preset modes, so the standard HA thermostat card works.
+  It writes zone settings; it never competes with the state machine.
+- **Sidebar panel** — `Smart Heat` is added to the Home Assistant sidebar (and
+  removed again when the last zone is deleted) alongside the optional Lovelace
+  card.
+- **Weekly schedule** — weekday/weekend profiles with night setback, plus
+  vacation ranges. The radiator thresholds follow the scheduled setpoint.
+- **Price optimisation** — optional, modest preheating when electricity is cheap
+  and a setback when it is expensive, never below the comfort floor.
 - **Radiator hysteresis** with configurable ON/OFF thresholds, minimum ON/OFF
   times and a hard minimum safety temperature that always wins.
 - **Presence debouncing** — a brief WiFi dropout never flips the zone to Away.
@@ -33,8 +43,9 @@ Everything runs inside Home Assistant. No external server, no subscription.
   reset, gap and unit handling. Every number carries a quality label
   (`measured`, `estimated`, `incomplete`, `missing`).
 - **Baseline & savings** — a 7–14 day baseline recorded *before* automation, then
-  compared against a matched-duration window. Negative savings are shown as
-  increased consumption, never hidden.
+  compared against a matched-duration window, both raw and weather-normalised
+  (kWh per heating degree day). Negative savings are shown as increased
+  consumption, never hidden.
 - **Dashboard card** — matches the approved light mockup, follows the active HA
   theme, works on desktop, tablet and mobile.
 
@@ -76,8 +87,13 @@ The wizard walks through seven steps:
 
 ## Dashboard
 
-Registered automatically by the integration (no manual resource needed). Add a
-card:
+Two ways in, both registered automatically:
+
+1. **Sidebar panel** — `Smart Heat` next to Overview/Energy. Added with
+   `frontend.async_register_built_in_panel` and removed when the last zone is
+   deleted. Disable it with the `panel_enabled` option if you only want the card.
+2. **Lovelace card** — `custom:smart-heat-dashboard` for embedding in your own
+   dashboard.
 
 ```yaml
 type: custom:smart-heat-dashboard
@@ -87,10 +103,10 @@ entry_id: <config entry id>   # optional, defaults to the first zone
 A ready-to-use dashboard is in [`dashboards/smart-heat.yaml`](dashboards/smart-heat.yaml).
 Use a **panel mode** view so the card spans the full width.
 
-> Home Assistant does not provide a supported API for injecting items into its
-> own sidebar. The dashboard therefore lives in a dedicated view rather than a
-> fake sidebar entry; the settings panel inside the card is the integration's own
-> drawer.
+The settings drawer (gear icon) contains **Allmänt**, **Temperaturer**,
+**Schema**, **Elpris-optimering**, **Energimätning**, **Närvaro** and
+**Avancerat**. Schedule and price edits are written straight to the integration
+through the WebSocket API; nothing is a placeholder.
 
 ### Building the card after changing the frontend
 
@@ -106,12 +122,27 @@ npm run build          # writes dist/smart-heat-controller.js (committed)
 
 | Domain | Example | Purpose |
 |---|---|---|
+| `climate` | `climate.sagas_hus_thermostat` | Zone thermostat: current temp, target, HVAC mode, presets |
 | `select` | `select.sagas_hus_operating_mode` | Operating mode |
 | `number` | `number.sagas_hus_home_target` | Home target, away target, radiator band, hysteresis, minimum ON/OFF |
 | `sensor` | `sensor.sagas_hus_heating_energy_today` | Energy, cost, savings, coverage, last decision |
 | `binary_sensor` | `binary_sensor.sagas_hus_power_anomaly` | Presence, faults, connectivity, power anomalies |
 | `button` | `button.sagas_hus_start_baseline` | Baseline workflow |
 | `switch` | `switch.sagas_hus_dry_run` | Shadow mode |
+
+The thermostat's presets map onto the controller modes, so
+`preset_mode: away` is the same thing as `select: away`. Setting a temperature on
+the thermostat writes the home target (or the away target when the zone is in
+Away), which keeps the automation and the manual controls consistent.
+
+### WebSocket API (used by the card)
+
+| Command | Purpose |
+|---|---|
+| `smart_heat_controller/zones` | Full zone payload for the dashboard |
+| `smart_heat_controller/set_schedule` | Replace the weekly schedule |
+| `smart_heat_controller/set_vacation` | Set the vacation date range |
+| `smart_heat_controller/set_price` | Update price optimisation settings |
 
 ### Services
 
@@ -161,13 +192,29 @@ A before/after difference is **not** proof of causal savings — outdoor
 temperature, occupancy and setpoints all vary. The card therefore shows:
 
 - the raw kWh/day comparison,
+- a weather-normalised view in kWh per heating degree day (base 17 °C), with the
+  degree days of both windows shown,
 - the data-quality of both windows,
 - how many days each window covers,
 - whether the comparison is radiator-only or whole-zone,
 - negative results as increased consumption.
 
-Weather normalisation is intentionally **not** claimed as verified. The outside
-temperature is plotted for context only.
+The normalised figure is explicitly labelled an estimate. It cannot correct for
+solar gain, wind, internal gains or changed occupancy.
+
+## Schedule, vacation and price
+
+- **Schedule** — weekday (Mon–Fri) and weekend (Sat–Sun) profiles. Each profile
+  is a list of `start → target` segments. Before a day's first segment the
+  previous day's last segment carries over, so a 22:00 setback keeps applying
+  after midnight. Duplicate start times resolve to the later entry.
+- **Vacation** — a date range that makes the zone behave as away, but only while
+  the mode is `Auto`, so a deliberate manual mode is never silently undone.
+- **Price optimisation** — off by default. When enabled, a price at or below the
+  cheap threshold raises the setpoint by at most `max_adjust` degrees *and only
+  while somebody is home*; a price at or above the expensive threshold lowers it,
+  never below `min_comfort`. The offset is capped at two degrees of stored heat
+  because a lightweight building mostly loses extra preheating.
 
 ---
 

@@ -987,6 +987,9 @@ export class SmartHeatDashboard extends LitElement {
         @shc-close=${() => {
           this.drawerOpen = false;
         }}
+        @shc-refresh=${() => {
+          void this.refresh(true);
+        }}
         @shc-open-options=${this.openOptions}
       ></shc-settings-drawer>
     `;
@@ -1057,7 +1060,29 @@ export class SmartHeatDashboard extends LitElement {
         <li>
           ${savings.baseline_start ?? "–"} → ${savings.baseline_end ?? "–"}
         </li>
+        <li class=${savings.weather_adjustment_available ? "" : "warn"}>
+          ${savings.weather_adjustment_available
+            ? `Väderkorrigerat: ${formatNumber(
+                this.hass,
+                Math.abs(savings.weather_adjusted_percent ?? 0),
+                0,
+              )} % ${
+                (savings.weather_adjusted_percent ?? 0) < 0 ? "ökning" : "minskning"
+              } (${formatNumber(this.hass, savings.baseline_hdd, 0)} → ${formatNumber(
+                this.hass,
+                savings.comparison_hdd,
+                0,
+              )} graddygn)`
+            : "Väderkorrigering saknas – utetemperatur behövs"}
+        </li>
       </ul>
+      ${savings.weather_adjustment_available
+        ? html`<p class="muted" style="margin:6px 0 0;font-size:11.5px">
+            Graddagsnormaliserat mått (bastemp 17 °C). Tar inte hänsyn till
+            solinstrålning, vind, internvärme eller ändrat nyttjande – det är en
+            uppskattning, inte ett bevis.
+          </p>`
+        : nothing}
     `;
   }
 
