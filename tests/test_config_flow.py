@@ -285,3 +285,77 @@ async def test_options_flow_can_disable_the_panel(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_entry.options["panel_enabled"] is False
+
+
+async def test_options_flow_saves_energy_without_heatpump_power_sensor(
+    hass: HomeAssistant, mock_entry
+) -> None:
+    """Optional sensors that are unset must not block the energy step."""
+
+    async def _noop(call) -> None:
+        return None
+
+    hass.services.async_register("switch", "turn_on", _noop)
+    hass.services.async_register("switch", "turn_off", _noop)
+    hass.services.async_register("climate", "set_temperature", _noop)
+
+    mock_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "energy"}
+    )
+    assert result["step_id"] == "energy"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            "supplementary_power_sensor": "sensor.shelly_power",
+            "supplementary_energy_sensor": "sensor.shelly_energy",
+            "heatpump_energy_sensor": "sensor.mitsubishi_energy",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_entry.options["heatpump_energy_sensor"] == "sensor.mitsubishi_energy"
+    assert "heatpump_power_sensor" not in mock_entry.options
+
+
+async def test_options_flow_saves_price_without_all_in_price(
+    hass: HomeAssistant, mock_entry
+) -> None:
+    """An unset all-in price must not block the price step."""
+
+    async def _noop(call) -> None:
+        return None
+
+    hass.states.async_set(
+        "sensor.spot_price", "1.25", {"unit_of_measurement": "SEK/kWh"}
+    )
+    hass.services.async_register("switch", "turn_on", _noop)
+    hass.services.async_register("switch", "turn_off", _noop)
+    hass.services.async_register("climate", "set_temperature", _noop)
+
+    mock_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "price"}
+    )
+    assert result["step_id"] == "price"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"price_sensor": "sensor.spot_price", "price_optimization": True},
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_entry.options["price_sensor"] == "sensor.spot_price"
+    assert mock_entry.options["price_optimization"] is True
+    assert "all_in_price" not in mock_entry.options

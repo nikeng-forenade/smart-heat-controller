@@ -49,7 +49,6 @@ from .const import (
     CONF_UNKNOWN_BEHAVIOR,
     CONF_ZONE_NAME,
     DEFAULT_ABSENCE_DELAY_MINUTES,
-    DEFAULT_ALL_IN_PRICE_UNSET,
     DEFAULT_ARRIVAL_CONFIRM_MINUTES,
     DEFAULT_AWAY_TARGET,
     DEFAULT_BOOST_DURATION_MINUTES,
@@ -130,6 +129,17 @@ def _validate_energy_entity(hass: HomeAssistant, entity_id: str | None) -> str |
     if state_class not in ("total", "total_increasing"):
         return "energy_sensor_needs_total_state_class"
     return None
+
+
+def _optional_default(current: dict[str, Any], key: str) -> Any:
+    """Default for an optional field in the options flow.
+
+    ``None`` is not a valid value for most selectors, so an unconfigured option
+    must leave the field without a default instead of defaulting to ``None``.
+    Without this the whole step is unsaveable while the field is empty.
+    """
+    value = current.get(key)
+    return vol.UNDEFINED if value is None else value
 
 
 @callback
@@ -705,25 +715,25 @@ class SmartHeatOptionsFlow(OptionsFlow):
             {
                 vol.Optional(
                     CONF_SUPPLEMENTARY_POWER_SENSOR,
-                    default=current.get(CONF_SUPPLEMENTARY_POWER_SENSOR),
+                    default=_optional_default(current, CONF_SUPPLEMENTARY_POWER_SENSOR),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="power")
                 ),
                 vol.Optional(
                     CONF_SUPPLEMENTARY_ENERGY_SENSOR,
-                    default=current.get(CONF_SUPPLEMENTARY_ENERGY_SENSOR),
+                    default=_optional_default(current, CONF_SUPPLEMENTARY_ENERGY_SENSOR),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="energy")
                 ),
                 vol.Optional(
                     CONF_HEATPUMP_POWER_SENSOR,
-                    default=current.get(CONF_HEATPUMP_POWER_SENSOR),
+                    default=_optional_default(current, CONF_HEATPUMP_POWER_SENSOR),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="power")
                 ),
                 vol.Optional(
                     CONF_HEATPUMP_ENERGY_SENSOR,
-                    default=current.get(CONF_HEATPUMP_ENERGY_SENSOR),
+                    default=_optional_default(current, CONF_HEATPUMP_ENERGY_SENSOR),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="energy")
                 ),
@@ -777,13 +787,14 @@ class SmartHeatOptionsFlow(OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Optional(
-                    CONF_PRICE_SENSOR, default=current.get(CONF_PRICE_SENSOR)
+                    CONF_PRICE_SENSOR,
+                    default=_optional_default(current, CONF_PRICE_SENSOR),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(
                     CONF_ALL_IN_PRICE,
-                    default=current.get(CONF_ALL_IN_PRICE, DEFAULT_ALL_IN_PRICE_UNSET),
+                    default=_optional_default(current, CONF_ALL_IN_PRICE),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,

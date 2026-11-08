@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "smart_heat_controller"
 NAME: Final = "Smart Heat Controller"
-VERSION: Final = "0.1.0"
+VERSION: Final = "0.1.1"
 
 PLATFORMS: Final = (
     "binary_sensor",
