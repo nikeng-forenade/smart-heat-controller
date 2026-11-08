@@ -95,9 +95,9 @@ three degrees instead of letting the two heat sources fight each other.
 3. Safety minimum temperature → radiator forced ON, minimum OFF time bypassed.
 4. Back-up heating policy: when the heat pump is unavailable *or* set to a
    non-heating HVAC mode (`off`, `fan_only`, `dry`, `cool`), no setpoint is sent
-   to it, and with `backup_heating: radiator` the radiator covers the demand by
-   following the same setpoint as the pump would. The radiator is a plain plug,
-   so it is switched off at the target instead of being left running.
+   to it. With `backup_heating: radiator` the radiator then runs on its own
+   configured band (`radiator_on_below` / `radiator_off_above`, shifted by the
+   schedule and price offsets). `none` keeps the radiator off.
 5. Away → radiator OFF.
 6. Hysteresis band → hold the current state.
 7. Radiator ON below / OFF above thresholds.
@@ -108,6 +108,11 @@ A radiator switch changed outside the controller is adopted on the next refresh
 real device state rather than a stale belief about it. A plug switched on by
 hand is treated as a deliberate request and left alone until it is switched off
 again or the zone goes away.
+
+When the heat pump is not heating, `backup_heating: radiator` lets the radiator
+run on exactly the same configured band as it does alongside the pump, so what
+the settings page shows is what happens. `none` keeps the radiator off while the
+pump is idle.
 
 ## Away and the heat pump
 

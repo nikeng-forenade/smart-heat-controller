@@ -399,15 +399,14 @@ def _set_pump(hass: HomeAssistant, hvac_mode: str) -> None:
     )
 
 
-async def test_backup_heating_turns_radiator_on_below_target(
+async def test_backup_heating_turns_radiator_on_below_its_threshold(
     hass: HomeAssistant, backup_loaded
 ) -> None:
-    """With the pump off the radiator has to cover the demand itself."""
+    """The configured radiator threshold decides, not the room setpoint."""
     _set_pump(hass, "off")
-    _set_room(hass, "20.2")
+    _set_room(hass, "18.5")
 
     coordinator = hass.data[DOMAIN][backup_loaded.entry_id]
-    # Start from a settled radiator that is off, as after a normal evening.
     hass.states.async_set("switch.shelly", "off")
     coordinator.zone_state.radiator_on = False
     coordinator.zone_state.radiator_changed_at = None
@@ -417,15 +416,14 @@ async def test_backup_heating_turns_radiator_on_below_target(
 
     assert decision.heatpump_target is None
     assert decision.radiator_on is True
-    assert decision.reason == "backup_heating_below_target"
+    assert decision.reason == "temperature_below_on_threshold"
 
 
-async def test_backup_heating_turns_radiator_off_at_target(
+async def test_backup_heating_turns_radiator_off_above_its_threshold(
     hass: HomeAssistant, backup_loaded
 ) -> None:
-    """The plug has no thermostat, so reaching the target must stop it."""
     _set_pump(hass, "fan_only")
-    _set_room(hass, "21.5")
+    _set_room(hass, "20.5")
 
     coordinator = hass.data[DOMAIN][backup_loaded.entry_id]
     coordinator.zone_state.radiator_on = True
@@ -434,29 +432,37 @@ async def test_backup_heating_turns_radiator_off_at_target(
     decision = coordinator.data.decision
 
     assert decision.radiator_on is False
-    assert decision.reason == "backup_heating_target_reached"
+    assert decision.reason == "temperature_above_off_threshold"
 
 
-async def test_backup_heating_holds_within_hysteresis(
+async def test_backup_heating_holds_within_the_band(
     hass: HomeAssistant, backup_loaded
 ) -> None:
     _set_pump(hass, "off")
-    _set_room(hass, "20.8")
+    _set_room(hass, "19.5")
 
     coordinator = await _refresh(hass, backup_loaded)
 
     assert coordinator.data.decision.radiator_on is None
-    assert coordinator.data.decision.reason == "backup_heating_within_hysteresis"
+    assert coordinator.data.decision.reason == "within_hysteresis_band"
 
 
-async def test_backup_heating_is_opt_in(hass: HomeAssistant, loaded) -> None:
-    """Without opting in, an idle pump must not turn the radiator on."""
+async def test_radiator_stays_off_when_backup_is_not_opted_in(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Without opting in, an idle pump switches a running radiator off."""
     _set_pump(hass, "off")
-    _set_room(hass, "20.2")
+    _set_room(hass, "18.5")
 
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    hass.states.async_set("switch.shelly", "on")
+    coordinator.zone_state.radiator_on = True
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator._last_radiator_command_at = None
     coordinator = await _refresh(hass, loaded)
 
-    assert coordinator.data.decision.reason != "backup_heating_below_target"
+    assert coordinator.data.decision.radiator_on is False
+    assert coordinator.data.decision.reason == "heatpump_not_heating_radiator_off"
 
 
 async def test_no_setpoint_is_sent_while_the_pump_is_not_heating(

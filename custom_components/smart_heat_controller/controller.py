@@ -581,20 +581,11 @@ def _evaluate_radiator(
         # away rule above still wins so an empty house is never heated.
         return None, "manual_radiator_override"
 
-    if not snapshot.heatpump_supplying_heat and config.backup_heating is BackupHeating.RADIATOR:
-        # The heat pump is not heating, so the radiator has to cover the demand.
-        # It follows the same setpoint as the pump would, instead of being forced
-        # on: the plug has no thermostat of its own.
-        target = effective_target(config, snapshot, mode)
-        if temperature <= target - config.hysteresis:
-            return _guard_switch(
-                config, snapshot, state, True, reason="backup_heating_below_target"
-            )
-        if temperature >= target:
-            return _guard_switch(
-                config, snapshot, state, False, reason="backup_heating_target_reached"
-            )
-        return None, "backup_heating_within_hysteresis"
+    if not snapshot.heatpump_supplying_heat and config.backup_heating is not BackupHeating.RADIATOR:
+        # Nobody wants the radiator stepping in for a pump that is not heating.
+        return _guard_switch(
+            config, snapshot, state, False, reason="heatpump_not_heating_radiator_off"
+        )
 
     on_below, off_above = _radiator_band(config, snapshot, mode)
 

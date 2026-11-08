@@ -170,20 +170,20 @@ def test_unavailable_radiator_is_never_commanded():
 
 
 def test_unavailable_heatpump_can_trigger_backup_heating():
-    """Backup heating follows the setpoint instead of running without limit."""
+    """Backup heating follows the configured radiator band, not the setpoint."""
     config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
     decision, _ = evaluate(
-        config, make_snapshot(room_temperature=19.5, heatpump_available=False),
+        config, make_snapshot(room_temperature=18.5, heatpump_available=False),
         ZoneState(selected_mode=Mode.HOME),
     )
 
     assert decision.radiator_on is True
-    assert decision.reason == "backup_heating_below_target"
+    assert decision.reason == "temperature_below_on_threshold"
     assert Fault.HEAT_PUMP_UNAVAILABLE in decision.faults
 
 
-def test_backup_heating_stops_at_the_target():
-    """The radiator plug has no thermostat, so it must be stopped at the target."""
+def test_backup_heating_stops_at_the_configured_off_threshold():
+    """The radiator plug has no thermostat, so the band must stop it."""
     config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
     decision, _ = evaluate(
         config,
@@ -192,7 +192,22 @@ def test_backup_heating_stops_at_the_target():
     )
 
     assert decision.radiator_on is False
-    assert decision.reason == "backup_heating_target_reached"
+    assert decision.reason == "temperature_above_off_threshold"
+
+
+def test_radiator_is_off_when_backup_is_not_opted_in():
+    """No opt-in means an already running radiator is switched off."""
+    config = ZoneConfig(backup_heating=BackupHeating.NONE)
+    decision, _ = evaluate(
+        config,
+        make_snapshot(
+            room_temperature=18.5, radiator_is_on=True, heatpump_available=False
+        ),
+        ZoneState(selected_mode=Mode.HOME, radiator_on=True),
+    )
+
+    assert decision.radiator_on is False
+    assert decision.reason == "heatpump_not_heating_radiator_off"
 
 
 def test_no_setpoint_is_sent_when_the_heatpump_is_not_heating():
