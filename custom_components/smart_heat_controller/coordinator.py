@@ -7,7 +7,7 @@ projection of :attr:`SmartHeatCoordinator.data`.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -123,6 +123,13 @@ TICK = timedelta(seconds=30)
 PRESENCE_TIMEOUT = timedelta(minutes=30)
 HOME_STATES = {STATE_ON, "home"}
 
+# HVAC modes in which the heat pump can actually deliver heat.
+HEATING_HVAC_MODES = frozenset({"heat", "heat_cool", "auto"})
+
+# How long a commanded radiator state may stay out of sync with the device
+# before the difference is treated as a change made outside the controller.
+COMMAND_SETTLE = timedelta(seconds=60)
+
 
 @dataclass(slots=True)
 class SourceSnapshot:
@@ -186,6 +193,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         self._temperatures = TemperatureLedger()
         self._price_decision = PriceDecision()
         self._schedule_target: float | None = None
+        self._last_radiator_command_at: datetime | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -382,6 +390,10 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
     async def _async_update_data(self) -> ZoneData:
         now = dt_util.now()
         snapshot = self._build_snapshot(now)
+        # Adopt changes made at the switch itself, so the guards and the minimum
+        # runtime bookkeeping act on the real device state instead of a stale
+        # idea of it.
+        self._adopt_radiator_state(snapshot, now)
 
         presence_raw = self._read_presence_raw()
         self._last_presence_raw = presence_raw
@@ -411,15 +423,10 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             presence_home=confirmed is Presence.HOME,
         )
 
-        snapshot = ZoneSnapshot(
-            now=now,
-            room_temperature=snapshot.room_temperature,
-            temperature_updated=snapshot.temperature_updated,
+        snapshot = replace(
+            snapshot,
             presence=confirmed,
-            heatpump_available=snapshot.heatpump_available,
-            radiator_available=snapshot.radiator_available,
             radiator_is_on=self._read_radiator_is_on(),
-            heatpump_target=snapshot.heatpump_target,
             schedule_target=self._schedule_target,
             price_offset=self._price_decision.offset,
         )
@@ -467,6 +474,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             temperature_updated=updated,
             presence=self._state.confirmed_presence,
             heatpump_available=heatpump_available,
+            heatpump_heating=self._heatpump_is_heating(),
             radiator_available=self._radiator_available(),
             radiator_is_on=self._read_radiator_is_on(),
             heatpump_target=(
@@ -554,6 +562,37 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             for entity_id in switches
         )
 
+    def _adopt_radiator_state(self, snapshot: ZoneSnapshot, now: datetime) -> None:
+        """Take over a radiator change made outside the controller.
+
+        Without this, a switch flipped by hand leaves the persisted state out of
+        date, and every decision is compared against a state the device is not
+        in: the controller would neither correct it nor track its runtime.
+        """
+        if not snapshot.radiator_available:
+            return
+        if snapshot.radiator_is_on == self._state.radiator_on:
+            return
+        if (
+            self._last_radiator_command_at is not None
+            and now - self._last_radiator_command_at < COMMAND_SETTLE
+        ):
+            # Give the device a moment to report the state we just commanded.
+            return
+        self._state.radiator_on = snapshot.radiator_is_on
+        self._state.radiator_changed_at = now
+
+    def _heatpump_is_heating(self) -> bool:
+        """True when the heat pump is set up to actually deliver heat."""
+        entity_id = self.config_data.get(CONF_PRIMARY_CLIMATE)
+        if not entity_id:
+            return True
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            # Not ready yet; assume it is heating rather than blindly backing up.
+            return True
+        return state.state in HEATING_HVAC_MODES
+
     # ------------------------------------------------------------------
     # Applying decisions
     # ------------------------------------------------------------------
@@ -636,6 +675,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
                 "%s: could not switch radiator: %s", self.zone_name, err
             )
             return
+        self._last_radiator_command_at = snapshot.now
         if decision.radiator_on != self._state.radiator_on:
             self._state.radiator_on = decision.radiator_on
             self._state.radiator_changed_at = snapshot.now

@@ -93,11 +93,19 @@ three degrees instead of letting the two heat sources fight each other.
 1. `Disabled` → no action.
 2. `Manual` → no action, the user drives the devices.
 3. Safety minimum temperature → radiator forced ON, minimum OFF time bypassed.
-4. Back-up heating policy (heat pump unavailable and the user opted in).
+4. Back-up heating policy: when the heat pump is unavailable *or* set to a
+   non-heating HVAC mode (`off`, `fan_only`, `dry`, `cool`), no setpoint is sent
+   to it, and with `backup_heating: radiator` the radiator covers the demand by
+   following the same setpoint as the pump would. The radiator is a plain plug,
+   so it is switched off at the target instead of being left running.
 5. Away → radiator OFF.
 6. Hysteresis band → hold the current state.
 7. Radiator ON below / OFF above thresholds.
 8. Minimum ON/OFF times block any change that is not safety driven.
+
+A radiator switch changed outside the controller is adopted on the next refresh
+(its runtime clock restarts from that moment), so the guards always act on the
+real device state rather than a stale belief about it.
 
 Presence resolution order: any entity Home → Home; all available entities Away →
 Away; otherwise Unknown. Unknown presence never silently becomes Away.

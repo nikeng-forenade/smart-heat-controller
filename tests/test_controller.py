@@ -170,6 +170,7 @@ def test_unavailable_radiator_is_never_commanded():
 
 
 def test_unavailable_heatpump_can_trigger_backup_heating():
+    """Backup heating follows the setpoint instead of running without limit."""
     config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
     decision, _ = evaluate(
         config, make_snapshot(room_temperature=19.5, heatpump_available=False),
@@ -177,8 +178,36 @@ def test_unavailable_heatpump_can_trigger_backup_heating():
     )
 
     assert decision.radiator_on is True
-    assert decision.reason == "backup_heating_for_missing_heatpump"
+    assert decision.reason == "backup_heating_below_target"
     assert Fault.HEAT_PUMP_UNAVAILABLE in decision.faults
+
+
+def test_backup_heating_stops_at_the_target():
+    """The radiator plug has no thermostat, so it must be stopped at the target."""
+    config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
+    decision, _ = evaluate(
+        config,
+        make_snapshot(room_temperature=21.5, heatpump_available=False),
+        ZoneState(selected_mode=Mode.HOME, radiator_on=True),
+    )
+
+    assert decision.radiator_on is False
+    assert decision.reason == "backup_heating_target_reached"
+
+
+def test_no_setpoint_is_sent_when_the_heatpump_is_not_heating():
+    """An idle pump must not be pushed back into heating by a setpoint."""
+    config = ZoneConfig()
+    decision, state = evaluate(
+        config,
+        make_snapshot(
+            room_temperature=19.0, heatpump_heating=False, heatpump_target=None
+        ),
+        ZoneState(selected_mode=Mode.HOME),
+    )
+
+    assert decision.heatpump_target is None
+    assert state.heatpump_target_command is None
 
 
 def test_disabled_mode_takes_no_action():

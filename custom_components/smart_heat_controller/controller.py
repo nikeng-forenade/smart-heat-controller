@@ -102,6 +102,7 @@ class ZoneSnapshot:
     temperature_updated: datetime | None = None
     presence: Presence = Presence.UNKNOWN
     heatpump_available: bool = True
+    heatpump_heating: bool = True
     radiator_available: bool = True
     radiator_is_on: bool = False
     heatpump_target: float | None = None
@@ -112,6 +113,11 @@ class ZoneSnapshot:
         if self.temperature_updated is None:
             return None
         return self.now - self.temperature_updated
+
+    @property
+    def heatpump_supplying_heat(self) -> bool:
+        """True only when the pump is reachable *and* set to a heating mode."""
+        return self.heatpump_available and self.heatpump_heating
 
 
 @dataclass(slots=True)
@@ -481,6 +487,11 @@ def _evaluate_heatpump(
     faults: list[Fault],
 ) -> float | None:
     """Return the target temperature to send, or None to leave it alone."""
+    if not snapshot.heatpump_supplying_heat:
+        # The zone is not relying on the heat pump (off/fan_only/dry/cool, or
+        # unreachable). Pushing a setpoint could switch the unit back on and
+        # override a deliberate choice, so leave it alone.
+        return None
     if not snapshot.heatpump_available:
         # Never command an unavailable device; hold the last known target.
         return None
@@ -530,15 +541,25 @@ def _evaluate_radiator(
             config, snapshot, state, True, safety=True, reason="minimum_safety_temperature"
         )
 
-    if not snapshot.heatpump_available and config.backup_heating is BackupHeating.RADIATOR:
-        return _guard_switch(
-            config, snapshot, state, True, safety=True, reason="backup_heating_for_missing_heatpump"
-        )
-
-    on_below, off_above = _radiator_band(config, snapshot, mode)
-
     if mode is Mode.AWAY:
         return _guard_switch(config, snapshot, state, False, reason="away")
+
+    if not snapshot.heatpump_supplying_heat and config.backup_heating is BackupHeating.RADIATOR:
+        # The heat pump is not heating, so the radiator has to cover the demand.
+        # It follows the same setpoint as the pump would, instead of being forced
+        # on: the plug has no thermostat of its own.
+        target = effective_target(config, snapshot, mode)
+        if temperature <= target - config.hysteresis:
+            return _guard_switch(
+                config, snapshot, state, True, reason="backup_heating_below_target"
+            )
+        if temperature >= target:
+            return _guard_switch(
+                config, snapshot, state, False, reason="backup_heating_target_reached"
+            )
+        return None, "backup_heating_within_hysteresis"
+
+    on_below, off_above = _radiator_band(config, snapshot, mode)
 
     if temperature <= on_below:
         return _guard_switch(config, snapshot, state, True, reason="temperature_below_on_threshold")

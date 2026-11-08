@@ -179,6 +179,150 @@ async def test_power_anomaly_flags_power_expected_off(
 
 
 # ---------------------------------------------------------------------------
+# Heat pump not heating (off / fan_only / dry / cool) and back-up heating
+# ---------------------------------------------------------------------------
+
+PUMP = "climate.mitsubishi"
+
+
+async def _refresh(hass: HomeAssistant, entry) -> object:
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    return coordinator
+
+
+@pytest.fixture
+async def backup_loaded(hass: HomeAssistant, loaded):
+    """Entry with the radiator opted in as back-up for a heat pump that is off."""
+    hass.config_entries.async_update_entry(
+        loaded, options={**loaded.options, "backup_heating": "radiator"}
+    )
+    return loaded
+
+
+def _set_room(hass: HomeAssistant, value: str) -> None:
+    hass.states.async_set(
+        "sensor.room_temperature", value, {"unit_of_measurement": "°C"}
+    )
+
+
+def _set_pump(hass: HomeAssistant, hvac_mode: str) -> None:
+    hass.states.async_set(
+        PUMP, hvac_mode, {"current_temperature": 20.0, "temperature": 21.0}
+    )
+
+
+async def test_backup_heating_turns_radiator_on_below_target(
+    hass: HomeAssistant, backup_loaded
+) -> None:
+    """With the pump off the radiator has to cover the demand itself."""
+    _set_pump(hass, "off")
+    _set_room(hass, "20.2")
+
+    coordinator = hass.data[DOMAIN][backup_loaded.entry_id]
+    # Start from a settled radiator that is off, as after a normal evening.
+    hass.states.async_set("switch.shelly", "off")
+    coordinator.zone_state.radiator_on = False
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator._last_radiator_command_at = None
+    coordinator = await _refresh(hass, backup_loaded)
+    decision = coordinator.data.decision
+
+    assert decision.heatpump_target is None
+    assert decision.radiator_on is True
+    assert decision.reason == "backup_heating_below_target"
+
+
+async def test_backup_heating_turns_radiator_off_at_target(
+    hass: HomeAssistant, backup_loaded
+) -> None:
+    """The plug has no thermostat, so reaching the target must stop it."""
+    _set_pump(hass, "fan_only")
+    _set_room(hass, "21.5")
+
+    coordinator = hass.data[DOMAIN][backup_loaded.entry_id]
+    coordinator.zone_state.radiator_on = True
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator = await _refresh(hass, backup_loaded)
+    decision = coordinator.data.decision
+
+    assert decision.radiator_on is False
+    assert decision.reason == "backup_heating_target_reached"
+
+
+async def test_backup_heating_holds_within_hysteresis(
+    hass: HomeAssistant, backup_loaded
+) -> None:
+    _set_pump(hass, "off")
+    _set_room(hass, "20.8")
+
+    coordinator = await _refresh(hass, backup_loaded)
+
+    assert coordinator.data.decision.radiator_on is None
+    assert coordinator.data.decision.reason == "backup_heating_within_hysteresis"
+
+
+async def test_backup_heating_is_opt_in(hass: HomeAssistant, loaded) -> None:
+    """Without opting in, an idle pump must not turn the radiator on."""
+    _set_pump(hass, "off")
+    _set_room(hass, "20.2")
+
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.data.decision.reason != "backup_heating_below_target"
+
+
+async def test_no_setpoint_is_sent_while_the_pump_is_not_heating(
+    hass: HomeAssistant, loaded
+) -> None:
+    """A fan-only pump must not be pushed back into heating by a setpoint."""
+    calls: list[str] = []
+
+    def _record(call) -> None:
+        calls.append(call.service)
+
+    hass.services.async_register("climate", "set_temperature", _record)
+
+    _set_pump(hass, "fan_only")
+    await _refresh(hass, loaded)
+    calls.clear()
+
+    # Move the effective target so a setpoint would be sent if it were allowed.
+    await hass.services.async_call(
+        "number",
+        "set_value",
+        {"entity_id": "number.sagas_hus_home_target", "value": 23.0},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert calls == []
+
+
+async def test_radiator_switched_on_by_hand_is_adopted(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Auto mode wins: a manual switch-on is tracked and then undone."""
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    _set_room(hass, "22.0")
+    await _refresh(hass, loaded)
+
+    hass.states.async_set("switch.shelly", "on")
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.zone_state.radiator_on is True
+    assert coordinator.zone_state.radiator_changed_at is not None
+
+    # Once the minimum runtime has elapsed the controller switches it off again.
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.data.decision.radiator_on is False
+    assert coordinator.data.decision.reason == "temperature_above_off_threshold"
+
+
+# ---------------------------------------------------------------------------
 # WebSocket API
 # ---------------------------------------------------------------------------
 
