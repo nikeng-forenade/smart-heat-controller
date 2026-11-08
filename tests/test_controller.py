@@ -210,6 +210,29 @@ def test_no_setpoint_is_sent_when_the_heatpump_is_not_heating():
     assert state.heatpump_target_command is None
 
 
+def test_away_beats_backup_heating():
+    """Leaving must switch the radiator off even with a fan-only pump."""
+    config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
+    decision, _ = evaluate(
+        config,
+        make_snapshot(
+            room_temperature=20.5,
+            presence=Presence.AWAY,
+            radiator_is_on=True,
+            heatpump_heating=False,
+            heatpump_cooling=False,
+        ),
+        ZoneState(
+            selected_mode=Mode.AUTO, confirmed_presence=Presence.AWAY, radiator_on=True
+        ),
+    )
+
+    assert decision.effective_mode is Mode.AWAY
+    assert decision.radiator_on is False
+    assert decision.reason == "away"
+    assert decision.heatpump_target is None
+
+
 def test_cooling_mode_keeps_the_radiator_off():
     """Asking the pump for cooling must never switch the radiator on."""
     config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
