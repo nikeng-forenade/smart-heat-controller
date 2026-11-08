@@ -452,6 +452,8 @@ ENTITY_DOMAINS: dict[str, str] = {
     "heatpump_power": "sensor",
     "radiator_energy_today": "sensor",
     "heatpump_energy_today": "sensor",
+    "radiator_cost_today": "sensor",
+    "heatpump_cost_today": "sensor",
     "heating_energy_today": "sensor",
     "heating_energy_week": "sensor",
     "heating_energy_month": "sensor",

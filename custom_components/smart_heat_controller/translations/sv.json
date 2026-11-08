@@ -168,6 +168,12 @@
       "heatpump_energy_today": {
         "name": "Värmepumpens energi idag"
       },
+      "radiator_cost_today": {
+        "name": "Elementets kostnad idag"
+      },
+      "heatpump_cost_today": {
+        "name": "Värmepumpens kostnad idag"
+      },
       "heating_energy_today": {
         "name": "Värmeenergi idag"
       },

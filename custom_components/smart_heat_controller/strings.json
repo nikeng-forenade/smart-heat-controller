@@ -156,6 +156,8 @@
       "heatpump_power": { "name": "Heat pump power" },
       "radiator_energy_today": { "name": "Radiator energy today" },
       "heatpump_energy_today": { "name": "Heat pump energy today" },
+      "radiator_cost_today": { "name": "Radiator cost today" },
+      "heatpump_cost_today": { "name": "Heat pump cost today" },
       "heating_energy_today": { "name": "Heating energy today" },
       "heating_energy_week": { "name": "Heating energy this week" },
       "heating_energy_month": { "name": "Heating energy this month" },

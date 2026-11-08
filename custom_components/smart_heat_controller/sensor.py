@@ -71,6 +71,15 @@ def _quality(period: str, source: str) -> Callable[[ZoneData], dict[str, object]
     return _attrs
 
 
+def _price_attrs(data: ZoneData) -> dict[str, object]:
+    return {
+        "price_source": data.price.source,
+        "price_quality": data.price.quality,
+        "includes_fees": data.price.includes_fees,
+        "sek_per_kwh": data.price.sek_per_kwh,
+    }
+
+
 SENSORS: tuple[SmartHeatSensorDescription, ...] = (
     SmartHeatSensorDescription(
         key="room_temperature",
@@ -129,6 +138,24 @@ SENSORS: tuple[SmartHeatSensorDescription, ...] = (
         suggested_display_precision=3,
         value_fn=_kwh("today", SOURCE_HEATPUMP),
         attrs_fn=_quality("today", SOURCE_HEATPUMP),
+    ),
+    SmartHeatSensorDescription(
+        key="radiator_cost_today",
+        translation_key="radiator_cost_today",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="SEK",
+        suggested_display_precision=2,
+        value_fn=_cost("today", SOURCE_RADIATOR),
+        attrs_fn=_price_attrs,
+    ),
+    SmartHeatSensorDescription(
+        key="heatpump_cost_today",
+        translation_key="heatpump_cost_today",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="SEK",
+        suggested_display_precision=2,
+        value_fn=_cost("today", SOURCE_HEATPUMP),
+        attrs_fn=_price_attrs,
     ),
     SmartHeatSensorDescription(
         key="heating_energy_today",

@@ -126,6 +126,10 @@ HOME_STATES = {STATE_ON, "home"}
 # HVAC modes in which the heat pump can actually deliver heat.
 HEATING_HVAC_MODES = frozenset({"heat", "heat_cool", "auto"})
 
+# HVAC modes in which the pump is deliberately removing heat or humidity; the
+# radiator must not add heat against it.
+COOLING_HVAC_MODES = frozenset({"cool", "dry"})
+
 # How long a commanded radiator state may stay out of sync with the device
 # before the difference is treated as a change made outside the controller.
 COMMAND_SETTLE = timedelta(seconds=60)
@@ -478,6 +482,10 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             presence=self._state.confirmed_presence,
             heatpump_available=heatpump_available,
             heatpump_heating=self._heatpump_is_heating(),
+            heatpump_cooling=(
+                heatpump_state is not None
+                and heatpump_state.state in COOLING_HVAC_MODES
+            ),
             radiator_available=self._radiator_available(),
             radiator_is_on=self._read_radiator_is_on(),
             heatpump_target=(

@@ -210,6 +210,42 @@ def test_no_setpoint_is_sent_when_the_heatpump_is_not_heating():
     assert state.heatpump_target_command is None
 
 
+def test_cooling_mode_keeps_the_radiator_off():
+    """Asking the pump for cooling must never switch the radiator on."""
+    config = ZoneConfig(backup_heating=BackupHeating.RADIATOR)
+    decision, _ = evaluate(
+        config,
+        make_snapshot(
+            room_temperature=18.0,
+            radiator_is_on=True,
+            heatpump_heating=False,
+            heatpump_cooling=True,
+        ),
+        ZoneState(selected_mode=Mode.HOME, radiator_on=True),
+    )
+
+    assert decision.radiator_on is False
+    assert decision.reason == "heatpump_cooling_radiator_off"
+
+
+def test_cooling_mode_still_respects_the_safety_minimum():
+    """Frost protection outranks the cooling choice."""
+    config = ZoneConfig(min_safety_temp=16.0, backup_heating=BackupHeating.RADIATOR)
+    decision, _ = evaluate(
+        config,
+        make_snapshot(
+            room_temperature=15.5,
+            radiator_is_on=False,
+            heatpump_heating=False,
+            heatpump_cooling=True,
+        ),
+        ZoneState(selected_mode=Mode.HOME, radiator_on=False),
+    )
+
+    assert decision.radiator_on is True
+    assert decision.reason == "minimum_safety_temperature"
+
+
 def test_disabled_mode_takes_no_action():
     config = ZoneConfig()
     decision, _ = evaluate(

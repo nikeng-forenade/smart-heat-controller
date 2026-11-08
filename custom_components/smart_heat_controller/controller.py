@@ -103,6 +103,7 @@ class ZoneSnapshot:
     presence: Presence = Presence.UNKNOWN
     heatpump_available: bool = True
     heatpump_heating: bool = True
+    heatpump_cooling: bool = False
     radiator_available: bool = True
     radiator_is_on: bool = False
     heatpump_target: float | None = None
@@ -550,6 +551,13 @@ def _evaluate_radiator(
 
     if mode is Mode.AWAY:
         return _guard_switch(config, snapshot, state, False, reason="away")
+
+    if snapshot.heatpump_cooling:
+        # The user asked for cooling or dehumidifying. Adding heat would fight
+        # the unit, so keep the radiator out of the picture entirely.
+        return _guard_switch(
+            config, snapshot, state, False, reason="heatpump_cooling_radiator_off"
+        )
 
     if not snapshot.heatpump_supplying_heat and config.backup_heating is BackupHeating.RADIATOR:
         # The heat pump is not heating, so the radiator has to cover the demand.
