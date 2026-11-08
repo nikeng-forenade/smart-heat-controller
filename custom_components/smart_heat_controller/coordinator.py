@@ -52,6 +52,7 @@ from .const import (
     CONF_PRICE_MIN_COMFORT,
     CONF_PRICE_OPTIMIZATION,
     CONF_PRICE_SENSOR,
+    CONF_PRICE_SURCHARGE,
     CONF_PRIMARY_CLIMATE,
     CONF_PRESENCE_ENTITIES,
     CONF_RADIATOR_OFF_ABOVE,
@@ -838,6 +839,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         price = resolve_price(
             sensor_price=self._price_sensor_value(conf.get(CONF_PRICE_SENSOR)),
             all_in_price=_opt_float(conf.get(CONF_ALL_IN_PRICE)),
+            # Stored in öre/kWh because that is how Swedish invoices list it.
+            surcharge=(_opt_float(conf.get(CONF_PRICE_SURCHARGE)) or 0.0) / 100.0,
         )
 
         periods = {

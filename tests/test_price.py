@@ -116,6 +116,22 @@ def test_spot_price_is_marked_estimated():
     assert info.quality == "estimated"
 
 
+def test_surcharge_adds_network_fees_and_energy_tax():
+    """A spot sensor carries VAT but no transfer fee or energy tax."""
+    info = resolve_price(sensor_price=0.8, all_in_price=None, surcharge=0.94)
+
+    assert info.sek_per_kwh == pytest.approx(1.74)
+    assert info.includes_fees is True
+    assert info.surcharge == pytest.approx(0.94)
+    assert info.quality == "estimated"
+
+
+def test_surcharge_is_ignored_when_an_all_in_price_is_configured():
+    info = resolve_price(sensor_price=0.8, all_in_price=2.0, surcharge=0.94)
+    assert info.sek_per_kwh == pytest.approx(2.0)
+    assert info.surcharge == 0.0
+
+
 def test_cost_is_none_without_price():
     assert estimate_cost(5.0, resolve_price(sensor_price=None, all_in_price=None)) is None
 

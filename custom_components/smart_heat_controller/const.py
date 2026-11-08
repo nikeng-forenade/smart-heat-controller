@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "smart_heat_controller"
 NAME: Final = "Smart Heat Controller"
-VERSION: Final = "0.1.5"
+VERSION: Final = "0.1.6"
 
 PLATFORMS: Final = (
     "binary_sensor",
@@ -82,6 +82,7 @@ CONF_BOOST_DURATION: Final = "boost_duration"
 CONF_DRY_RUN: Final = "dry_run"
 CONF_PRICE_SENSOR: Final = "price_sensor"
 CONF_ALL_IN_PRICE: Final = "all_in_price"
+CONF_PRICE_SURCHARGE: Final = "price_surcharge"
 CONF_PRICE_OPTIMIZATION: Final = "price_optimization"
 CONF_PRICE_CHEAP: Final = "price_cheap"
 CONF_PRICE_EXPENSIVE: Final = "price_expensive"

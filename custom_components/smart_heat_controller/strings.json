@@ -143,6 +143,7 @@
         "data": {
           "price_sensor": "Spot price sensor (SEK/kWh)",
           "all_in_price": "All-in price (SEK/kWh)",
+          "price_surcharge": "Fees added to the spot price (öre/kWh, incl. VAT)",
           "price_optimization": "Enable price optimisation"
         }
       }

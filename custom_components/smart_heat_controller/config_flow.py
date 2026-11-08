@@ -35,6 +35,7 @@ from .const import (
     CONF_PANEL_ENABLED,
     CONF_PRICE_OPTIMIZATION,
     CONF_PRICE_SENSOR,
+    CONF_PRICE_SURCHARGE,
     CONF_PRIMARY_CLIMATE,
     CONF_PRESENCE_ENTITIES,
     CONF_RADIATOR_OFF_ABOVE,
@@ -801,6 +802,18 @@ class SmartHeatOptionsFlow(OptionsFlow):
                         max=20,
                         step=0.01,
                         unit_of_measurement="SEK/kWh",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_PRICE_SURCHARGE,
+                    default=_optional_default(current, CONF_PRICE_SURCHARGE),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=300,
+                        step=0.1,
+                        unit_of_measurement="öre/kWh",
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),

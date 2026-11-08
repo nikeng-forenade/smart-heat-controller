@@ -19,6 +19,7 @@ class PriceInfo:
     quality: str = QUALITY_MISSING
     source: str = "none"
     includes_fees: bool = False
+    surcharge: float = 0.0
 
     @property
     def available(self) -> bool:
@@ -30,6 +31,7 @@ class PriceInfo:
             "quality": self.quality,
             "source": self.source,
             "includes_fees": self.includes_fees,
+            "surcharge": self.surcharge,
         }
 
 
@@ -117,12 +119,15 @@ def resolve_price(
     *,
     sensor_price: float | None,
     all_in_price: float | None,
+    surcharge: float = 0.0,
 ) -> PriceInfo:
     """Pick the most trustworthy price source.
 
     A user entered all-in price (spot + network + tax + VAT) is preferred
     because it produces a real cost figure. A live spot sensor is used
-    otherwise and marked as estimated.
+    otherwise, plus the configured surcharge for the network transfer fee and
+    energy tax that a spot sensor never includes. That sum is still marked as
+    estimated: the fees are a fixed assumption, not a measurement.
     """
     if all_in_price is not None and all_in_price > 0:
         return PriceInfo(
@@ -132,11 +137,13 @@ def resolve_price(
             includes_fees=True,
         )
     if sensor_price is not None and sensor_price >= 0:
+        total = round(sensor_price + max(surcharge, 0.0), 4)
         return PriceInfo(
-            sek_per_kwh=sensor_price,
+            sek_per_kwh=total,
             quality=QUALITY_ESTIMATED,
             source="price_sensor",
-            includes_fees=False,
+            includes_fees=surcharge > 0,
+            surcharge=max(surcharge, 0.0),
         )
     return PriceInfo()
 
