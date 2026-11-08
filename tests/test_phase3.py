@@ -116,6 +116,69 @@ async def test_thermostat_off_disables_controller(hass: HomeAssistant, loaded) -
 
 
 # ---------------------------------------------------------------------------
+# Power anomaly
+# ---------------------------------------------------------------------------
+
+POWER_ANOMALY = "binary_sensor.sagas_hus_power_anomaly"
+MODE_SELECT = "select.sagas_hus_operating_mode"
+
+
+async def _set_mode(hass: HomeAssistant, option: str) -> None:
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": MODE_SELECT, "option": option},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+
+def _set_radiator_power(hass: HomeAssistant, watts: str) -> None:
+    hass.states.async_set(
+        "sensor.shelly_power",
+        watts,
+        {"unit_of_measurement": "W", "device_class": "power"},
+    )
+
+
+async def test_power_anomaly_is_ignored_in_manual_mode(
+    hass: HomeAssistant, loaded
+) -> None:
+    """A radiator the user runs manually must not raise a power anomaly."""
+    await _set_mode(hass, "manual")
+    _set_radiator_power(hass, "700")
+
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get(POWER_ANOMALY)
+    assert state.state == "off"
+    assert state.attributes["power_w"] == pytest.approx(700)
+    assert state.attributes["expected_on"] is None
+
+
+async def test_power_anomaly_flags_power_expected_off(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Power drawn while the controller wants the radiator off is an anomaly."""
+    await _set_mode(hass, "away")
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    # Skip the minimum-runtime guard so the away command takes effect now: the
+    # setup fixture turns the radiator on because the room starts at 18.5 °C.
+    coordinator.zone_state.radiator_changed_at = None
+    _set_radiator_power(hass, "700")
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get(POWER_ANOMALY)
+    assert coordinator.zone_state.radiator_on is False
+    assert state.state == "on"
+    assert state.attributes["expected_on"] is False
+
+
+# ---------------------------------------------------------------------------
 # WebSocket API
 # ---------------------------------------------------------------------------
 

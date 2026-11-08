@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import CONF_SUPPLEMENTARY_NOMINAL_POWER, DOMAIN
-from .controller import Fault, Presence
+from .controller import Fault, Mode, Presence
 from .coordinator import SmartHeatCoordinator, ZoneData
 from .entity import SmartHeatEntity
 
@@ -142,6 +142,10 @@ class SmartHeatPowerAnomalySensor(SmartHeatEntity, BinarySensorEntity):
             )
         )
         state = self.coordinator.zone_state
+        if not self._controls_radiator(data):
+            # Nobody asked the controller to run the radiator, so measured power
+            # cannot contradict an expectation.
+            return False
 
         if not state.radiator_on and power > 5.0:
             return True
@@ -151,6 +155,11 @@ class SmartHeatPowerAnomalySensor(SmartHeatEntity, BinarySensorEntity):
                 return True
         return power > nominal * POWER_TOLERANCE
 
+    @staticmethod
+    def _controls_radiator(data: ZoneData) -> bool:
+        """False when the selected mode leaves the radiator to the user."""
+        return data.decision.effective_mode not in (Mode.MANUAL, Mode.DISABLED)
+
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         data = self.coordinator.data
@@ -158,7 +167,11 @@ class SmartHeatPowerAnomalySensor(SmartHeatEntity, BinarySensorEntity):
             return {}
         return {
             "power_w": data.radiator.power_w,
-            "expected_on": self.coordinator.zone_state.radiator_on,
+            "expected_on": (
+                self.coordinator.zone_state.radiator_on
+                if self._controls_radiator(data)
+                else None
+            ),
             "nominal_power_w": self.coordinator.config_data.get(
                 CONF_SUPPLEMENTARY_NOMINAL_POWER
             ),
