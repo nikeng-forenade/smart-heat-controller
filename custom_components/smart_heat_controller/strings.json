@@ -212,6 +212,7 @@
   "away_hvac_mode": {
     "options": {
       "keep": "Keep heating towards the away target",
+      "heat": "Take over the heating (switch back on)",
       "fan_only": "Switch to fan only",
       "off": "Switch off"
     }

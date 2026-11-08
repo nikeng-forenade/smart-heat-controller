@@ -74,6 +74,7 @@ from .const import (
     DEFAULT_PRICE_MAX_ADJUST,
     DEFAULT_PRICE_MIN_COMFORT,
     AWAY_HVAC_KEEP,
+    AWAY_HVAC_HEAT,
     DOMAIN,
     LEDGER_RETENTION_DAYS,
     QUALITY_ESTIMATED,
@@ -202,6 +203,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         self._price_decision = PriceDecision()
         self._schedule_target: float | None = None
         self._last_radiator_command_at: datetime | None = None
+        self._last_hvac_command: tuple[str, datetime] | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -641,6 +643,13 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return
 
         if decision.effective_mode is Mode.AWAY:
+            if desired == AWAY_HVAC_HEAT:
+                # She may have switched the pump off for the night. While the
+                # zone is away the pump takes the load instead of the radiator,
+                # so switch it back into heating if it is idle.
+                if state.state not in HEATING_HVAC_MODES:
+                    await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
+                return
             if state.state == desired:
                 self._state.heatpump_hvac_applied = desired
                 return
@@ -656,6 +665,16 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
 
     async def _set_hvac_mode(self, entity_id: str, hvac_mode: str) -> None:
+        now = dt_util.now()
+        if (
+            self._last_hvac_command is not None
+            and self._last_hvac_command[0] == hvac_mode
+            and now - self._last_hvac_command[1] < COMMAND_SETTLE
+        ):
+            # The device may take a moment to report the new mode; do not
+            # repeat the same command on every tick while it catches up.
+            return
+        self._last_hvac_command = (hvac_mode, now)
         _LOGGER.debug(
             "%s: setting %s hvac mode to %s", self.zone_name, entity_id, hvac_mode
         )

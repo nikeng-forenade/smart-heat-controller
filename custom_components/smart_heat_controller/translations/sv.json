@@ -295,6 +295,7 @@
     "away_hvac_mode": {
       "options": {
         "keep": "Behåll värme mot borta-börvärdet",
+        "heat": "Ta över värmen (slå på igen)",
         "fan_only": "Växla till enbart fläkt",
         "off": "Stäng av"
       }

@@ -235,6 +235,27 @@ async def test_away_switches_the_pump_to_fan_and_back(
     assert coordinator.zone_state.heatpump_hvac_applied is None
 
 
+async def test_away_can_switch_the_pump_back_on(
+    hass: HomeAssistant, loaded
+) -> None:
+    """A pump switched off for the night takes over again when she leaves."""
+    modes: list[str] = []
+
+    def _record(call) -> None:
+        modes.append(call.data.get("hvac_mode"))
+
+    hass.services.async_register("climate", "set_hvac_mode", _record)
+    hass.config_entries.async_update_entry(
+        loaded, options={**loaded.options, "away_hvac_mode": "heat"}
+    )
+    _set_pump(hass, "off")
+
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+
+    assert modes == ["heat"]
+
+
 async def test_away_hvac_mode_keep_sends_no_mode_command(
     hass: HomeAssistant, loaded
 ) -> None:
