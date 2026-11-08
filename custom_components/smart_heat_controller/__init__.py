@@ -59,6 +59,8 @@ _LOGGER = logging.getLogger(__name__)
 FRONTEND_URL = "/smart_heat_controller"
 FRONTEND_FILE = "smart-heat-controller.js"
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 SET_MODE_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_ENTRY_ID): cv.string,

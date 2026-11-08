@@ -1,9 +1,9 @@
 {
   "domain": "smart_heat_controller",
   "name": "Smart Heat Controller",
+  "after_dependencies": ["frontend", "http"],
   "codeowners": ["@nikeng-forenade"],
   "config_flow": true,
-  "after_dependencies": ["frontend", "http"],
   "documentation": "https://github.com/nikeng-forenade/smart-heat-controller",
   "integration_type": "hub",
   "iot_class": "calculated",
