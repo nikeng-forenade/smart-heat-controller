@@ -135,7 +135,8 @@
         "data": {
           "fallback_radiator": "Elementets beteende utan giltig temperatur",
           "backup_heating": "Reservvärme när värmepumpen är otillgänglig",
-          "dry_run": "Torrkörning (beräkna beslut, agera inte)"
+          "dry_run": "Torrkörning (beräkna beslut, agera inte)",
+          "away_hvac_mode": "Värmepumpen när ingen är hemma"
         }
       },
       "price": {
@@ -289,6 +290,13 @@
         "keep_last": "Behåll senast kända läge",
         "home": "Behandla som hemma",
         "away": "Behandla som borta"
+      }
+    },
+    "away_hvac_mode": {
+      "options": {
+        "keep": "Behåll värme mot borta-börvärdet",
+        "fan_only": "Växla till enbart fläkt",
+        "off": "Stäng av"
       }
     }
   },

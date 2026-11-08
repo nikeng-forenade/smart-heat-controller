@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "smart_heat_controller"
 NAME: Final = "Smart Heat Controller"
-VERSION: Final = "0.1.7"
+VERSION: Final = "0.1.8"
 
 PLATFORMS: Final = (
     "binary_sensor",
@@ -90,12 +90,20 @@ CONF_PRICE_MAX_ADJUST: Final = "price_max_adjust"
 CONF_PRICE_MIN_COMFORT: Final = "price_min_comfort"
 
 CONF_SCHEDULE: Final = "schedule"
+CONF_AWAY_HVAC_MODE: Final = "away_hvac_mode"
 CONF_VACATION_START: Final = "vacation_start"
 CONF_VACATION_END: Final = "vacation_end"
 CONF_PANEL_ENABLED: Final = "panel_enabled"
 
 DEFAULT_PRICE_MAX_ADJUST: Final = 1.0
 DEFAULT_PRICE_MIN_COMFORT: Final = 18.0
+
+# What to do with the heat pump when the zone is away. ``keep`` leaves it
+# heating towards the away target, the others switch its HVAC mode instead.
+AWAY_HVAC_KEEP: Final = "keep"
+AWAY_HVAC_FAN: Final = "fan_only"
+AWAY_HVAC_OFF: Final = "off"
+AWAY_HVAC_OPTIONS: Final = (AWAY_HVAC_KEEP, AWAY_HVAC_FAN, AWAY_HVAC_OFF)
 DEFAULT_PANEL_ENABLED: Final = True
 PANEL_URL_PATH: Final = "smart-heat"
 PANEL_COMPONENT: Final = "smart-heat-panel"

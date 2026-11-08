@@ -132,6 +132,9 @@ class ZoneState:
     # the room by hand, so the controller must not fight it until it is released.
     radiator_manual: bool = False
     heatpump_target_command: float | None = None
+    # HVAC mode the controller applied while away, so it can be undone when
+    # somebody comes home. None means the controller changed nothing.
+    heatpump_hvac_applied: str | None = None
     last_effective_mode: Mode = Mode.HOME
     override_until: datetime | None = None
     override_previous_mode: Mode | None = None
@@ -149,6 +152,7 @@ class ZoneState:
             "radiator_changed_at": _iso(self.radiator_changed_at),
             "radiator_manual": self.radiator_manual,
             "heatpump_target_command": self.heatpump_target_command,
+            "heatpump_hvac_applied": self.heatpump_hvac_applied,
             "last_effective_mode": str(self.last_effective_mode),
             "override_until": _iso(self.override_until),
             "override_previous_mode": (
@@ -172,6 +176,11 @@ class ZoneState:
             radiator_changed_at=_parse(data.get("radiator_changed_at")),
             radiator_manual=bool(data.get("radiator_manual", False)),
             heatpump_target_command=_opt_float(data.get("heatpump_target_command")),
+            heatpump_hvac_applied=(
+                str(data["heatpump_hvac_applied"])
+                if data.get("heatpump_hvac_applied")
+                else None
+            ),
             last_effective_mode=Mode(
                 str(data.get("last_effective_mode") or Mode.HOME)
             ),

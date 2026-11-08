@@ -18,6 +18,7 @@ from .const import (
     CONF_ALL_IN_PRICE,
     CONF_AREA,
     CONF_ARRIVAL_CONFIRM,
+    CONF_AWAY_HVAC_MODE,
     CONF_AWAY_TARGET,
     CONF_BACKUP_HEATING,
     CONF_BOOST_DURATION,
@@ -50,6 +51,8 @@ from .const import (
     CONF_UNKNOWN_BEHAVIOR,
     CONF_ZONE_NAME,
     DEFAULT_ABSENCE_DELAY_MINUTES,
+    AWAY_HVAC_KEEP,
+    AWAY_HVAC_OPTIONS,
     DEFAULT_ARRIVAL_CONFIRM_MINUTES,
     DEFAULT_AWAY_TARGET,
     DEFAULT_BOOST_DURATION_MINUTES,
@@ -774,6 +777,16 @@ class SmartHeatOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_DRY_RUN, default=current.get(CONF_DRY_RUN, False)
                 ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_AWAY_HVAC_MODE,
+                    default=current.get(CONF_AWAY_HVAC_MODE, AWAY_HVAC_KEEP),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(AWAY_HVAC_OPTIONS),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        translation_key="away_hvac_mode",
+                    )
+                ),
             }
         )
         return self.async_show_form(step_id="safety", data_schema=schema)

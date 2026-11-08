@@ -8,6 +8,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.smart_heat_controller.const import DOMAIN
+from custom_components.smart_heat_controller.controller import Mode
 from custom_components.smart_heat_controller.schedule import ScheduleSegment
 
 THERMOSTAT = "climate.sagas_hus_thermostat"
@@ -201,6 +202,82 @@ async def test_manual_plug_switch_off_releases_the_override(
     coordinator = await _refresh(hass, loaded)
 
     assert coordinator.zone_state.radiator_manual is False
+
+
+async def test_away_switches_the_pump_to_fan_and_back(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Leaving for school puts the pump on fan; coming home heats again."""
+    modes: list[str] = []
+
+    def _record(call) -> None:
+        modes.append(call.data.get("hvac_mode"))
+
+    hass.services.async_register("climate", "set_hvac_mode", _record)
+    hass.config_entries.async_update_entry(
+        loaded, options={**loaded.options, "away_hvac_mode": "fan_only"}
+    )
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    await _refresh(hass, loaded)
+
+    await _set_mode(hass, "away")
+    coordinator = await _refresh(hass, loaded)
+    assert modes[:1] == ["fan_only"]
+    assert coordinator.zone_state.heatpump_hvac_applied == "fan_only"
+
+    # The device now reports fan_only, as a real unit would.
+    _set_pump(hass, "fan_only")
+    modes.clear()
+    await _set_mode(hass, "home")
+    coordinator = await _refresh(hass, loaded)
+
+    assert modes == ["heat"]
+    assert coordinator.zone_state.heatpump_hvac_applied is None
+
+
+async def test_away_hvac_mode_keep_sends_no_mode_command(
+    hass: HomeAssistant, loaded
+) -> None:
+    modes: list[str] = []
+
+    def _record(call) -> None:
+        modes.append(call.data.get("hvac_mode"))
+
+    hass.services.async_register("climate", "set_hvac_mode", _record)
+
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+
+    assert modes == []
+
+
+async def test_manual_pump_choice_is_not_undone_on_arrival(
+    hass: HomeAssistant, loaded
+) -> None:
+    """If somebody changed the pump by hand, coming home leaves it alone."""
+    modes: list[str] = []
+
+    def _record(call) -> None:
+        modes.append(call.data.get("hvac_mode"))
+
+    hass.services.async_register("climate", "set_hvac_mode", _record)
+    hass.config_entries.async_update_entry(
+        loaded, options={**loaded.options, "away_hvac_mode": "fan_only"}
+    )
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+    assert coordinator.zone_state.heatpump_hvac_applied == "fan_only"
+
+    # She switched the pump off herself, then presence reports home again.
+    await hass.async_block_till_done()
+    _set_pump(hass, "off")
+    coordinator.zone_state.selected_mode = Mode.HOME
+    modes.clear()
+    await _refresh(hass, loaded)
+
+    assert modes == []
+    assert coordinator.zone_state.heatpump_hvac_applied is None
 
 
 # ---------------------------------------------------------------------------

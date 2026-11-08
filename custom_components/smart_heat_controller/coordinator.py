@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.climate import HVACMode
 from homeassistant.const import (
     ATTR_UNIT_OF_MEASUREMENT,
     STATE_ON,
@@ -33,6 +34,7 @@ from .const import (
     CONF_ABSENCE_DELAY,
     CONF_ALL_IN_PRICE,
     CONF_ARRIVAL_CONFIRM,
+    CONF_AWAY_HVAC_MODE,
     CONF_AWAY_TARGET,
     CONF_BACKUP_HEATING,
     CONF_BOOST_DURATION,
@@ -71,6 +73,7 @@ from .const import (
     CONF_ZONE_NAME,
     DEFAULT_PRICE_MAX_ADJUST,
     DEFAULT_PRICE_MIN_COMFORT,
+    AWAY_HVAC_KEEP,
     DOMAIN,
     LEDGER_RETENTION_DAYS,
     QUALITY_ESTIMATED,
@@ -615,10 +618,58 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return
         self._applying = True
         try:
+            await self._apply_away_hvac_mode(decision)
             await self._apply_heatpump(decision, snapshot)
             await self._apply_radiator(decision, snapshot)
         finally:
             self._applying = False
+
+    async def _apply_away_hvac_mode(self, decision: Decision) -> None:
+        """Switch the heat pump off or to fan while the zone is away.
+
+        Leaving the pump heating an empty house costs money for nothing, and a
+        fan-only unit keeps the air moving without heating. The mode we applied
+        is remembered so coming home restores heating again.
+        """
+        desired = self.config_data.get(CONF_AWAY_HVAC_MODE, AWAY_HVAC_KEEP)
+        entity_id = self.config_data.get(CONF_PRIMARY_CLIMATE)
+        if desired == AWAY_HVAC_KEEP or not entity_id:
+            return
+
+        state = self._climate_state()
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return
+
+        if decision.effective_mode is Mode.AWAY:
+            if state.state == desired:
+                self._state.heatpump_hvac_applied = desired
+                return
+            self._state.heatpump_hvac_applied = desired
+            await self._set_hvac_mode(entity_id, str(desired))
+            return
+
+        applied = self._state.heatpump_hvac_applied
+        if applied is None:
+            return
+        self._state.heatpump_hvac_applied = None
+        if state.state == applied:
+            await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
+
+    async def _set_hvac_mode(self, entity_id: str, hvac_mode: str) -> None:
+        _LOGGER.debug(
+            "%s: setting %s hvac mode to %s", self.zone_name, entity_id, hvac_mode
+        )
+        try:
+            await self.hass.services.async_call(
+                "climate",
+                "set_hvac_mode",
+                {"entity_id": entity_id, "hvac_mode": hvac_mode},
+                blocking=False,
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning(
+                "%s: could not set heat pump mode: %s", self.zone_name, err
+            )
 
     async def _apply_heatpump(
         self, decision: Decision, snapshot: ZoneSnapshot

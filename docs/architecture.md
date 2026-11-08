@@ -105,7 +105,23 @@ three degrees instead of letting the two heat sources fight each other.
 
 A radiator switch changed outside the controller is adopted on the next refresh
 (its runtime clock restarts from that moment), so the guards always act on the
-real device state rather than a stale belief about it.
+real device state rather than a stale belief about it. A plug switched on by
+hand is treated as a deliberate request and left alone until it is switched off
+again or the zone goes away.
+
+## Away and the heat pump
+
+`away_hvac_mode` decides what happens to the heat pump when the zone is away:
+
+| Value | Behaviour |
+|---|---|
+| `keep` (default) | Heat towards `away_target`, as before |
+| `fan_only` | Switch the unit to fan, so an empty house is aired but not heated |
+| `off` | Switch the unit off |
+
+The applied mode is remembered, so coming home restores heating. If the unit was
+changed by hand while away, the controller leaves it alone instead of forcing
+`heat` back on.
 
 Presence resolution order: any entity Home → Home; all available entities Away →
 Away; otherwise Unknown. Unknown presence never silently becomes Away.

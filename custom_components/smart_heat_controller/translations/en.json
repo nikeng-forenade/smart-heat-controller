@@ -135,7 +135,8 @@
         "data": {
           "fallback_radiator": "Radiator behaviour without valid temperature",
           "backup_heating": "Backup heating when the heat pump is unavailable",
-          "dry_run": "Dry run (compute decisions, do not act)"
+          "dry_run": "Dry run (compute decisions, do not act)",
+          "away_hvac_mode": "Heat pump when nobody is home"
         }
       },
       "price": {
@@ -206,6 +207,13 @@
         "keep_last": "Keep the last known mode",
         "home": "Treat as home",
         "away": "Treat as away"
+      }
+    },
+    "away_hvac_mode": {
+      "options": {
+        "keep": "Keep heating towards the away target",
+        "fan_only": "Switch to fan only",
+        "off": "Switch off"
       }
     }
   },
