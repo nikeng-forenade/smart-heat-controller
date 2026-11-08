@@ -128,6 +128,9 @@ class ZoneState:
     selected_mode: Mode = Mode.AUTO
     radiator_on: bool = False
     radiator_changed_at: datetime | None = None
+    # Set when the plug was switched at the device itself: the user is heating
+    # the room by hand, so the controller must not fight it until it is released.
+    radiator_manual: bool = False
     heatpump_target_command: float | None = None
     last_effective_mode: Mode = Mode.HOME
     override_until: datetime | None = None
@@ -144,6 +147,7 @@ class ZoneState:
             "selected_mode": str(self.selected_mode),
             "radiator_on": self.radiator_on,
             "radiator_changed_at": _iso(self.radiator_changed_at),
+            "radiator_manual": self.radiator_manual,
             "heatpump_target_command": self.heatpump_target_command,
             "last_effective_mode": str(self.last_effective_mode),
             "override_until": _iso(self.override_until),
@@ -166,6 +170,7 @@ class ZoneState:
             selected_mode=Mode(str(data.get("selected_mode") or Mode.AUTO)),
             radiator_on=bool(data.get("radiator_on", False)),
             radiator_changed_at=_parse(data.get("radiator_changed_at")),
+            radiator_manual=bool(data.get("radiator_manual", False)),
             heatpump_target_command=_opt_float(data.get("heatpump_target_command")),
             last_effective_mode=Mode(
                 str(data.get("last_effective_mode") or Mode.HOME)
@@ -550,14 +555,22 @@ def _evaluate_radiator(
         )
 
     if mode is Mode.AWAY:
+        state.radiator_manual = False
         return _guard_switch(config, snapshot, state, False, reason="away")
 
     if snapshot.heatpump_cooling:
         # The user asked for cooling or dehumidifying. Adding heat would fight
         # the unit, so keep the radiator out of the picture entirely.
+        state.radiator_manual = False
         return _guard_switch(
             config, snapshot, state, False, reason="heatpump_cooling_radiator_off"
         )
+
+    if state.radiator_manual:
+        # Somebody switched the plug at the device. Honouring that keeps the
+        # controller from fighting a person standing next to the radiator; the
+        # away rule above still wins so an empty house is never heated.
+        return None, "manual_radiator_override"
 
     if not snapshot.heatpump_supplying_heat and config.backup_heating is BackupHeating.RADIATOR:
         # The heat pump is not heating, so the radiator has to cover the demand.

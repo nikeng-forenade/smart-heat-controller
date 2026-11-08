@@ -593,6 +593,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return
         self._state.radiator_on = snapshot.radiator_is_on
         self._state.radiator_changed_at = now
+        # A plug switched on by hand is a person asking for heat right now.
+        self._state.radiator_manual = snapshot.radiator_is_on
 
     def _heatpump_is_heating(self) -> bool:
         """True when the heat pump is set up to actually deliver heat."""

@@ -155,10 +155,11 @@ class SmartHeatPowerAnomalySensor(SmartHeatEntity, BinarySensorEntity):
                 return True
         return power > nominal * POWER_TOLERANCE
 
-    @staticmethod
-    def _controls_radiator(data: ZoneData) -> bool:
-        """False when the selected mode leaves the radiator to the user."""
-        return data.decision.effective_mode not in (Mode.MANUAL, Mode.DISABLED)
+    def _controls_radiator(self, data: ZoneData) -> bool:
+        """False when the mode or a manual plug override leaves it to the user."""
+        if data.decision.effective_mode in (Mode.MANUAL, Mode.DISABLED):
+            return False
+        return not self.coordinator.zone_state.radiator_manual
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:

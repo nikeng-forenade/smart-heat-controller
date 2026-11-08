@@ -116,6 +116,94 @@ async def test_thermostat_off_disables_controller(hass: HomeAssistant, loaded) -
 
 
 # ---------------------------------------------------------------------------
+# Heat pump not heating (off / fan_only / dry / cool) and back-up heating
+# ---------------------------------------------------------------------------
+
+PUMP = "climate.mitsubishi"
+
+
+async def _refresh(hass: HomeAssistant, entry) -> object:
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    return coordinator
+
+
+async def test_plug_switched_on_by_hand_is_honoured(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Saga presses the Shelly button; the controller must not undo it."""
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    _set_room(hass, "21.0")
+    coordinator.zone_state.radiator_on = False
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator._last_radiator_command_at = None
+    await _refresh(hass, loaded)
+    assert coordinator.data.decision.radiator_on is None
+
+    hass.states.async_set("switch.shelly", "on")
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.zone_state.radiator_manual is True
+    assert coordinator.data.decision.radiator_on is None
+    assert coordinator.data.decision.reason == "manual_radiator_override"
+    assert hass.states.get("switch.shelly").state == "on"
+
+
+async def test_manual_plug_is_switched_off_when_leaving(
+    hass: HomeAssistant, loaded
+) -> None:
+    """The away rule still outranks a plug switched on by hand."""
+    commanded: list[str] = []
+
+    def _record(call) -> None:
+        commanded.append(call.service)
+
+    hass.services.async_register("switch", "turn_off", _record)
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    _set_room(hass, "21.0")
+    hass.states.async_set("switch.shelly", "off")
+    coordinator.zone_state.radiator_on = False
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator._last_radiator_command_at = None
+    await _refresh(hass, loaded)
+
+    hass.states.async_set("switch.shelly", "on")
+    coordinator = await _refresh(hass, loaded)
+    assert coordinator.zone_state.radiator_manual is True
+
+    # The minimum runtime still protects the plug, so let it elapse first.
+    coordinator.zone_state.radiator_changed_at = None
+    await _set_mode(hass, "away")
+    coordinator = await _refresh(hass, loaded)
+
+    assert "turn_off" in commanded
+    assert coordinator.zone_state.radiator_manual is False
+    assert coordinator.data.decision.reason.startswith("away")
+
+
+async def test_manual_plug_switch_off_releases_the_override(
+    hass: HomeAssistant, loaded
+) -> None:
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    _set_room(hass, "21.0")
+    hass.states.async_set("switch.shelly", "off")
+    coordinator.zone_state.radiator_on = False
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator._last_radiator_command_at = None
+    await _refresh(hass, loaded)
+
+    hass.states.async_set("switch.shelly", "on")
+    coordinator = await _refresh(hass, loaded)
+    assert coordinator.zone_state.radiator_manual is True
+
+    hass.states.async_set("switch.shelly", "off")
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.zone_state.radiator_manual is False
+
+
+# ---------------------------------------------------------------------------
 # Power anomaly
 # ---------------------------------------------------------------------------
 
