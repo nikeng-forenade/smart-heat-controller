@@ -1,13 +1,13 @@
 {
   "domain": "smart_heat_controller",
   "name": "Smart Heat Controller",
-  "codeowners": ["@sagahus"],
+  "codeowners": ["@nikeng-forenade"],
   "config_flow": true,
   "after_dependencies": ["frontend", "http"],
-  "documentation": "https://github.com/sagahus/smart-heat-controller",
+  "documentation": "https://github.com/nikeng-forenade/smart-heat-controller",
   "integration_type": "hub",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/sagahus/smart-heat-controller/issues",
+  "issue_tracker": "https://github.com/nikeng-forenade/smart-heat-controller/issues",
   "requirements": [],
   "version": "0.1.0"
 }

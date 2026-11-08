@@ -18,7 +18,7 @@ window.customCards.push({
   description:
     "Heating overview, energy, savings and settings for Smart Heat Controller.",
   preview: false,
-  documentationURL: "https://github.com/sagahus/smart-heat-controller",
+  documentationURL: "https://github.com/nikeng-forenade/smart-heat-controller",
 });
 
 // Make the class reachable for HACS resource registration tooling.

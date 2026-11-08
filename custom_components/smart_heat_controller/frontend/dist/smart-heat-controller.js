@@ -3066,7 +3066,7 @@ window.customCards.push({
   name: "Smart Heat Controller",
   description: "Heating overview, energy, savings and settings for Smart Heat Controller.",
   preview: !1,
-  documentationURL: "https://github.com/sagahus/smart-heat-controller"
+  documentationURL: "https://github.com/nikeng-forenade/smart-heat-controller"
 });
 export {
   x as SmartHeatDashboard
