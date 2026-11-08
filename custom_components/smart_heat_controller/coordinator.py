@@ -405,6 +405,9 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             now,
             timedelta(minutes=float(conf.get(CONF_ABSENCE_DELAY, 30))),
             timedelta(minutes=float(conf.get(CONF_ARRIVAL_CONFIRM, 0))),
+            UnknownPresenceBehaviour(
+                conf.get(CONF_UNKNOWN_BEHAVIOR, UnknownPresenceBehaviour.KEEP_LAST)
+            ),
         )
 
         # Vacation overrides presence, but only while the zone is in Auto so a

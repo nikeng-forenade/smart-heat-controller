@@ -239,6 +239,7 @@ def update_presence(
     now: datetime,
     absence_delay: timedelta,
     arrival_confirm: timedelta,
+    unknown_behaviour: UnknownPresenceBehaviour = UnknownPresenceBehaviour.KEEP_LAST,
 ) -> Presence:
     """Debounce raw presence into a confirmed presence.
 
@@ -246,13 +247,19 @@ def update_presence(
     confirmed state on its own. Going Away requires ``absence_delay`` of
     continuous Away; arriving requires ``arrival_confirm``.
 
+    With ``unknown_behaviour`` set to ``AWAY`` a source that keeps reporting
+    nothing is treated as an absence, so a dead phone cannot leave an empty
+    house heating forever. The absence delay still protects short dropouts.
+
     Mutates ``state`` (candidate bookkeeping) and returns the confirmed value.
     """
     if raw is Presence.UNKNOWN:
-        # Preserve the last known state instead of assuming Away.
-        state.candidate_presence = None
-        state.candidate_since = None
-        return state.confirmed_presence
+        if unknown_behaviour is not UnknownPresenceBehaviour.AWAY:
+            # Preserve the last known state instead of assuming Away.
+            state.candidate_presence = None
+            state.candidate_since = None
+            return state.confirmed_presence
+        raw = Presence.AWAY
 
     if raw is state.confirmed_presence:
         state.candidate_presence = None

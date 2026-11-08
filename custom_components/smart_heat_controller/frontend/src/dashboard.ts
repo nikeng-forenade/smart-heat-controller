@@ -25,6 +25,7 @@ import type {
 
 const REFRESH_MS = 30_000;
 const HISTORY_MS = 5 * 60_000;
+const ZONE_STORAGE_KEY = "smart-heat-controller.zone";
 
 const MODES: Array<{ id: string; key: "auto" | "home" | "away" | "boost"; icon: string }> = [
   { id: "auto", key: "auto", icon: "M12 3v2m0 14v2M5.6 5.6 7 7m10 10 1.4 1.4M3 12h2m14 0h2M5.6 18.4 7 17m10-10 1.4-1.4" },
@@ -59,6 +60,16 @@ export class SmartHeatDashboard extends LitElement {
         justify-content: space-between;
         gap: 12px;
         padding: 4px 4px 0;
+      }
+
+      select {
+        font: inherit;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--divider-color, #d5dbe3);
+        background: var(--card-background-color, #fff);
+        color: var(--primary-text-color, #111);
+        cursor: pointer;
       }
 
       .brand {
@@ -433,6 +444,9 @@ export class SmartHeatDashboard extends LitElement {
 
   @state() private zones: ZonePayload[] = [];
 
+  /** Zone chosen in the panel; the card mode uses the configured entry_id. */
+  @state() private selectedZoneId?: string;
+
   @state() private outside: HistoryPoint[] = [];
 
   @state() private drawerOpen = false;
@@ -457,6 +471,7 @@ export class SmartHeatDashboard extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    this.selectedZoneId = window.localStorage.getItem(ZONE_STORAGE_KEY) ?? undefined;
     void this.refresh(true);
   }
 
@@ -482,15 +497,26 @@ export class SmartHeatDashboard extends LitElement {
         type: "smart_heat_controller/zones",
       });
       this.zones = response.zones ?? [];
-      const wanted = this.config?.entry_id;
-      this.zone = wanted
-        ? this.zones.find((zone) => zone.entry_id === wanted) ?? this.zones[0]
-        : this.zones[0];
+      const wanted = this.config?.entry_id ?? this.selectedZoneId;
+      this.zone =
+        (wanted ? this.zones.find((zone) => zone.entry_id === wanted) : undefined) ??
+        this.zones[0];
+      if (this.zone && !this.config?.entry_id) {
+        this.selectedZoneId = this.zone.entry_id;
+      }
       this.error = undefined;
       void this.loadOutsideHistory();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  private chooseZone(entryId: string): void {
+    this.selectedZoneId = entryId;
+    window.localStorage.setItem(ZONE_STORAGE_KEY, entryId);
+    this.zone = this.zones.find((zone) => zone.entry_id === entryId);
+    this.outside = [];
+    void this.loadOutsideHistory();
   }
 
   private async loadOutsideHistory(): Promise<void> {
@@ -660,6 +686,24 @@ export class SmartHeatDashboard extends LitElement {
             <span>Smart Heat Controller – ${zone.name}</span>
           </div>
           <div class="row">
+            ${this.zones.length > 1
+              ? html`<select
+                  aria-label="Zone"
+                  .value=${zone.entry_id}
+                  @change=${(event: Event) => {
+                    this.chooseZone((event.target as HTMLSelectElement).value);
+                  }}
+                >
+                  ${this.zones.map(
+                    (item) => html`<option
+                      value=${item.entry_id}
+                      ?selected=${item.entry_id === zone.entry_id}
+                    >
+                      ${item.name}
+                    </option>`,
+                  )}
+                </select>`
+              : nothing}
             <span class="pill ${mode === "auto" ? "ok" : ""}">
               ${mode === "auto"
                 ? (this.hass?.locale?.language ?? "").startsWith("en")

@@ -293,6 +293,89 @@ def test_presence_debounce_requires_absence_delay():
     )
 
 
+def test_unknown_presence_keeps_last_state_by_default():
+    """A silent source must not cool the house on its own."""
+    state = ZoneState(confirmed_presence=Presence.HOME)
+
+    for minutes in (0, 60, 600):
+        assert (
+            update_presence(
+                state,
+                Presence.UNKNOWN,
+                NOW + timedelta(minutes=minutes),
+                timedelta(minutes=30),
+                timedelta(0),
+            )
+            is Presence.HOME
+        )
+
+
+def test_unknown_presence_becomes_away_when_configured():
+    """A phone that never comes back must not heat an empty house forever."""
+    state = ZoneState(confirmed_presence=Presence.HOME)
+
+    # Still debounced, so a short dropout changes nothing.
+    assert (
+        update_presence(
+            state,
+            Presence.UNKNOWN,
+            NOW,
+            timedelta(minutes=30),
+            timedelta(0),
+            UnknownPresenceBehaviour.AWAY,
+        )
+        is Presence.HOME
+    )
+    assert (
+        update_presence(
+            state,
+            Presence.UNKNOWN,
+            NOW + timedelta(minutes=10),
+            timedelta(minutes=30),
+            timedelta(0),
+            UnknownPresenceBehaviour.AWAY,
+        )
+        is Presence.HOME
+    )
+    # After the absence delay the silence counts as absence.
+    assert (
+        update_presence(
+            state,
+            Presence.UNKNOWN,
+            NOW + timedelta(minutes=31),
+            timedelta(minutes=30),
+            timedelta(0),
+            UnknownPresenceBehaviour.AWAY,
+        )
+        is Presence.AWAY
+    )
+
+
+def test_away_with_unknown_opt_in_turns_the_radiator_off():
+    """The whole point: nobody home means no radiator power."""
+    config = ZoneConfig(
+        backup_heating=BackupHeating.RADIATOR,
+        unknown_presence=UnknownPresenceBehaviour.AWAY,
+    )
+    state = ZoneState(
+        selected_mode=Mode.AUTO, confirmed_presence=Presence.AWAY, radiator_on=True
+    )
+    decision, _ = evaluate(
+        config,
+        make_snapshot(
+            room_temperature=19.0,
+            presence=Presence.AWAY,
+            radiator_is_on=True,
+            heatpump_available=False,
+            heatpump_heating=False,
+        ),
+        state,
+    )
+
+    assert decision.effective_mode is Mode.AWAY
+    assert decision.radiator_on is False
+
+
 def test_arrival_is_confirmed_after_configured_delay():
     state = ZoneState(confirmed_presence=Presence.AWAY)
 
