@@ -17,6 +17,12 @@ interface Column {
   complete: boolean;
 }
 
+function localDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 @customElement("shc-energy-chart")
 export class ShcEnergyChart extends LitElement {
   static override styles = [chartStyles];
@@ -86,16 +92,25 @@ export class ShcEnergyChart extends LitElement {
     const slot = plotWidth / columns.length;
     const barWidth = Math.min(30, slot * 0.56);
 
-    const temps = this.outside.map((point) => point.y).filter(Number.isFinite);
-    const tempMin = temps.length ? Math.min(...temps) : 0;
-    const tempMax = temps.length ? Math.max(...temps) : 1;
+    const dailyTemps = this.dailyTemps();
+    const tempValues = columns
+      .map((column) => dailyTemps.get(column.date))
+      .filter((value): value is number => value !== undefined);
+    const tempMin = tempValues.length ? Math.min(...tempValues) : 0;
+    const tempMax = tempValues.length ? Math.max(...tempValues) : 1;
     const tempSpan = Math.max(1, tempMax - tempMin);
     const tempToY = (value: number) =>
       PAD.top + plotHeight - ((value - tempMin) / tempSpan) * plotHeight;
 
-    const tempPath = this.buildTempPath(columns, tempToY, PAD.left, slot);
+    const tempPath =
+      tempValues.length > 1
+        ? this.buildTempPath(columns, dailyTemps, tempToY, PAD.left, slot)
+        : null;
+    const tempDigits = tempSpan < 4 ? 1 : 0;
 
     const gridLines = [0, 0.25, 0.5, 0.75, 1];
+    const energyStep = maxKwh / (gridLines.length - 1);
+    const energyDigits = Number.isInteger(energyStep) ? 0 : 1;
 
     return html`
       <div class="chart-wrap">
@@ -106,7 +121,7 @@ export class ShcEnergyChart extends LitElement {
             return svg`
               <line class="grid-line" x1=${PAD.left} y1=${y} x2=${W - PAD.right} y2=${y} />
               <text class="axis-label" x=${PAD.left - 6} y=${y + 3} text-anchor="end">
-                ${formatNumber(this.hass, value, 0)}
+                ${formatNumber(this.hass, value, energyDigits)}
               </text>
             `;
           })}
@@ -121,6 +136,17 @@ export class ShcEnergyChart extends LitElement {
           >
             °C
           </text>
+          ${tempValues.length
+            ? [0.25, 0.75].map((fraction) => {
+                const y = PAD.top + plotHeight * fraction;
+                const value = tempMax - tempSpan * fraction;
+                return svg`
+                  <text class="axis-label" x=${W - PAD.right + 6} y=${y + 3} text-anchor="start">
+                    ${formatNumber(this.hass, value, tempDigits)}
+                  </text>
+                `;
+              })
+            : nothing}
 
           ${columns.map((column, index) => {
             const x = PAD.left + index * slot + slot / 2 - barWidth / 2;
@@ -181,13 +207,17 @@ export class ShcEnergyChart extends LitElement {
                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />`
               : nothing
           }
-          ${this.outside
-            .slice(Math.max(0, this.outside.length - columns.length))
-            .map((point, index) => {
-              const x = PAD.left + index * slot + slot / 2;
-              return svg`<circle cx=${x} cy=${tempToY(point.y)} r="3"
-                fill="var(--shc-card)" stroke="var(--shc-violet)" stroke-width="2" />`;
-            })}
+          ${columns.map((column, index) => {
+            const temperature = dailyTemps.get(column.date);
+            if (temperature === undefined) {
+              return nothing;
+            }
+            const x = PAD.left + index * slot + slot / 2;
+            return svg`<circle cx=${x} cy=${tempToY(temperature)} r="3"
+              fill="var(--shc-card)" stroke="var(--shc-violet)" stroke-width="2">
+              <title>${formatNumber(this.hass, temperature, tempDigits)} °C</title>
+            </circle>`;
+          })}
         </svg>
 
         ${
@@ -200,8 +230,8 @@ export class ShcEnergyChart extends LitElement {
                 ><br />
                 Mitsubishi: ${formatNumber(this.hass, columns[this.hovered].heatpump, 2)} kWh<br />
                 Gnosjö: ${formatNumber(this.hass, columns[this.hovered].radiator, 2)} kWh<br />
-                ${this.outside[this.hovered]
-                  ? `Ute: ${formatNumber(this.hass, this.outside[this.hovered].y, 1)} °C`
+                ${dailyTemps.has(columns[this.hovered].date)
+                  ? `Ute: ${formatNumber(this.hass, dailyTemps.get(columns[this.hovered].date), 1)} °C`
                   : ""}
               </div>`
             : nothing
@@ -217,23 +247,42 @@ export class ShcEnergyChart extends LitElement {
     `;
   }
 
+  /** Mean outside temperature per local day, keyed like the energy dates. */
+  private dailyTemps(): Map<string, number> {
+    const buckets = new Map<string, { sum: number; count: number }>();
+    for (const point of this.outside) {
+      if (!Number.isFinite(point.t) || !Number.isFinite(point.y)) {
+        continue;
+      }
+      const key = localDateKey(new Date(point.t));
+      const bucket = buckets.get(key) ?? { sum: 0, count: 0 };
+      bucket.sum += point.y;
+      bucket.count += 1;
+      buckets.set(key, bucket);
+    }
+    return new Map(
+      [...buckets].map(([key, bucket]) => [key, bucket.sum / bucket.count]),
+    );
+  }
+
   private buildTempPath(
     columns: Column[],
+    temps: Map<string, number>,
     tempToY: (value: number) => number,
     left: number,
     slot: number,
-  ): string | null {
-    if (this.outside.length < 2) {
-      return null;
-    }
-    const offset = Math.max(0, this.outside.length - columns.length);
-    return this.outside
-      .slice(offset, offset + columns.length)
-      .map((point, index) => {
-        const x = left + index * slot + slot / 2;
-        const y = tempToY(point.y);
-        return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
+  ): string {
+    const points: string[] = [];
+    columns.forEach((column, index) => {
+      const temperature = temps.get(column.date);
+      if (temperature === undefined) {
+        return;
+      }
+      const x = left + index * slot + slot / 2;
+      points.push(`${x.toFixed(1)},${tempToY(temperature).toFixed(1)}`);
+    });
+    return points
+      .map((point, index) => `${index === 0 ? "M" : "L"}${point}`)
       .join(" ");
   }
 }

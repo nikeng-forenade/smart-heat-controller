@@ -528,18 +528,23 @@ export class SmartHeatDashboard extends LitElement {
     try {
       const end = new Date();
       const start = new Date(end.getTime() - 14 * 24 * 3600 * 1000);
-      const result = await this.hass.callWS<Record<string, Array<[number, number | string]>>>({
+      const result = await this.hass.callWS<
+        Record<string, Array<{ s?: string; lu?: number }>>
+      >({
         type: "history/history_during_period",
         start_time: start.toISOString(),
         end_time: end.toISOString(),
-        minimal_response: false,
+        minimal_response: true,
         no_attributes: true,
         entity_ids: [sensor],
       });
       const rows = result?.[sensor] ?? [];
       this.outside = rows
-        .map((row) => ({ t: Number(row[0]), y: Number(row[1]) }))
-        .filter((point) => Number.isFinite(point.y));
+        .map((row) => ({
+          t: Number(row.lu) * 1000,
+          y: Number(row.s),
+        }))
+        .filter((point) => Number.isFinite(point.y) && Number.isFinite(point.t));
     } catch {
       this.outside = [];
     }
