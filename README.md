@@ -143,6 +143,7 @@ Away), which keeps the automation and the manual controls consistent.
 | `smart_heat_controller/set_schedule` | Replace the weekly schedule |
 | `smart_heat_controller/set_vacation` | Set the vacation date range |
 | `smart_heat_controller/set_price` | Update price optimisation settings |
+| `smart_heat_controller/set_away_hvac_mode` | Choose what the heat pump does while the zone is away |
 
 ### Services
 

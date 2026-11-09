@@ -116,17 +116,25 @@ pump is idle.
 
 ## Away and the heat pump
 
-`away_hvac_mode` decides what happens to the heat pump when the zone is away:
+`away_hvac_mode` decides what happens to the heat pump's HVAC mode when the zone
+is away. The setpoint is still controlled in every case; only the mode differs.
 
 | Value | Behaviour |
 |---|---|
-| `keep` (default) | Heat towards `away_target`, as before |
+| `keep` (default) | Leave the unit's HVAC mode alone, whatever it is right now |
+| `heat` | Switch the unit back to `heat` so it takes the load from the radiator |
 | `fan_only` | Switch the unit to fan, so an empty house is aired but not heated |
 | `off` | Switch the unit off |
 
 The applied mode is remembered, so coming home restores heating. If the unit was
 changed by hand while away, the controller leaves it alone instead of forcing
-`heat` back on.
+`heat` back on. With `keep` the controller never sends an HVAC mode command, so
+the pump stays exactly as it was left in Home Assistant.
+
+The setting is editable in three places: the options flow (Settings → Devices &
+services → Smart Heat Controller → Configure → Safety), the panel's settings
+drawer under **Temperaturer**, and the
+`smart_heat_controller/set_away_hvac_mode` WebSocket command.
 
 Presence resolution order: any entity Home → Home; all available entities Away →
 Away; otherwise Unknown. Unknown presence never silently becomes Away.

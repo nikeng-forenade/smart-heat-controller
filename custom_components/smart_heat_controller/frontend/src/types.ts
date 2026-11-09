@@ -173,6 +173,7 @@ export interface ZonePayload {
     nominal_power: number | null;
     heatpump_target: number | null;
     radiator_on: boolean | null;
+    away_hvac_mode: string | null;
   };
   last_updated?: string | null;
 }

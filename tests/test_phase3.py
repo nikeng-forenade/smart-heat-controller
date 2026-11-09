@@ -532,6 +532,7 @@ async def test_ws_zones_payload(hass: HomeAssistant, loaded, hass_ws_client) -> 
     assert zone["entities"]["mode"].startswith("select.")
     assert "heatpump" in zone
     assert "schedule" in zone
+    assert zone["settings"]["away_hvac_mode"] == "keep"
 
 
 async def test_ws_set_schedule_applies_target(
@@ -597,6 +598,48 @@ async def test_ws_set_price(hass: HomeAssistant, loaded, hass_ws_client) -> None
     settings = coordinator.price_settings
     assert settings.enabled is True
     assert settings.cheap_threshold == pytest.approx(0.4)
+
+
+async def test_ws_set_away_hvac_mode(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 5,
+            "type": f"{DOMAIN}/set_away_hvac_mode",
+            "entry_id": loaded.entry_id,
+            "mode": "off",
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    await hass.async_block_till_done()
+
+    assert loaded.options["away_hvac_mode"] == "off"
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    assert coordinator.config_data["away_hvac_mode"] == "off"
+
+    await client.send_json({"id": 6, "type": f"{DOMAIN}/zones"})
+    response = await client.receive_json()
+    assert response["result"]["zones"][0]["settings"]["away_hvac_mode"] == "off"
+
+
+async def test_ws_set_away_hvac_mode_rejects_unknown_value(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 7,
+            "type": f"{DOMAIN}/set_away_hvac_mode",
+            "entry_id": loaded.entry_id,
+            "mode": "warm",
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is False
+    assert loaded.options.get("away_hvac_mode") is None
 
 
 # ---------------------------------------------------------------------------

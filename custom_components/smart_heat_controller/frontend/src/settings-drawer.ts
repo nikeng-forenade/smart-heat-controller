@@ -3,6 +3,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { formatNumber, formatTime, modeLabel, presenceLabel, reasonLabel, t } from "./format";
+import type { StringKey } from "./format";
 import { sharedStyles } from "./styles";
 import type {
   HomeAssistant,
@@ -150,6 +151,17 @@ export class ShcSettingsDrawer extends LitElement {
         min-width: 34px;
         text-align: right;
         font-variant-numeric: tabular-nums;
+      }
+
+      .field select {
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 8px;
+        max-width: 190px;
+        border: 1px solid var(--shc-border);
+        border-radius: 8px;
+        background: var(--shc-card);
+        color: var(--shc-text);
       }
 
       .hint {
@@ -339,6 +351,18 @@ export class ShcSettingsDrawer extends LitElement {
 
     const sorted = [...segments].sort((a, b) => a.start.localeCompare(b.start));
     return { ...schedule, [profile]: sorted };
+  }
+
+  private async saveAwayHvacMode(mode: string): Promise<void> {
+    if (!this.hass || !this.zone?.entry_id) {
+      return;
+    }
+    await this.hass.callWS({
+      type: "smart_heat_controller/set_away_hvac_mode",
+      entry_id: this.zone.entry_id,
+      mode,
+    });
+    this.notifyRefresh();
   }
 
   private async saveVacation(start: string | null, end: string | null): Promise<void> {
@@ -715,11 +739,40 @@ export class ShcSettingsDrawer extends LitElement {
     `;
   }
 
+  private renderAwayHvacMode() {
+    const current = this.zone?.settings?.away_hvac_mode ?? "keep";
+    const options: Array<[string, StringKey]> = [
+      ["keep", "awayHvacKeep"],
+      ["heat", "awayHvacHeat"],
+      ["fan_only", "awayHvacFan"],
+      ["off", "awayHvacOff"],
+    ];
+    return html`
+      <label class="field">
+        <span>${t(this.hass, "awayHvac")}</span>
+        <select
+          .value=${current}
+          @change=${(event: Event) =>
+            this.saveAwayHvacMode((event.target as HTMLSelectElement).value)}
+        >
+          ${options.map(
+            ([value, key]) =>
+              html`<option value=${value} ?selected=${value === current}>
+                ${t(this.hass, key)}
+              </option>`,
+          )}
+        </select>
+      </label>
+      <p class="hint">${t(this.hass, "awayHvacHint")}</p>
+    `;
+  }
+
   private renderTemperatures() {
     const settings = this.zone?.settings;
     return html`
       ${this.slider("home_target", t(this.hass, "roomTarget"), settings?.home_target, 5, 30, 0.5)}
       ${this.slider("away_target", t(this.hass, "awayTarget"), settings?.away_target, 5, 30, 0.5)}
+      ${this.renderAwayHvacMode()}
       ${this.slider(
         "radiator_on_below",
         t(this.hass, "onBelow"),

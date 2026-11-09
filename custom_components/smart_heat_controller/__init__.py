@@ -29,6 +29,9 @@ from .const import (
     ATTR_DURATION,
     ATTR_ENTRY_ID,
     ATTR_MODE,
+    AWAY_HVAC_KEEP,
+    AWAY_HVAC_OPTIONS,
+    CONF_AWAY_HVAC_MODE,
     CONF_PANEL_ENABLED,
     CONF_PRICE_CHEAP,
     CONF_PRICE_EXPENSIVE,
@@ -415,10 +418,29 @@ def _async_register_websocket(hass: HomeAssistant) -> None:
         )
         connection.send_result(msg["id"], {"ok": True})
 
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/set_away_hvac_mode",
+            vol.Required(ATTR_ENTRY_ID): cv.string,
+            vol.Required(ATTR_MODE): vol.In(AWAY_HVAC_OPTIONS),
+        }
+    )
+    @websocket_api.async_response
+    async def _ws_set_away_hvac_mode(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+    ) -> None:
+        coordinator = _coordinator_for(hass, msg[ATTR_ENTRY_ID])
+        if coordinator is None:
+            connection.send_error(msg["id"], "not_found", "Unknown zone")
+            return
+        await coordinator.async_set_option(CONF_AWAY_HVAC_MODE, msg[ATTR_MODE])
+        connection.send_result(msg["id"], {CONF_AWAY_HVAC_MODE: msg[ATTR_MODE]})
+
     websocket_api.async_register_command(hass, _ws_zones)
     websocket_api.async_register_command(hass, _ws_set_schedule)
     websocket_api.async_register_command(hass, _ws_set_vacation)
     websocket_api.async_register_command(hass, _ws_set_price)
+    websocket_api.async_register_command(hass, _ws_set_away_hvac_mode)
     hass.data.setdefault(DOMAIN, {})["websocket_registered"] = True
 
 
@@ -577,6 +599,7 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
             "nominal_power": config.get("supplementary_nominal_power"),
             "heatpump_target": data.snapshot.heatpump_target,
             "radiator_on": data.snapshot.radiator_is_on,
+            "away_hvac_mode": config.get(CONF_AWAY_HVAC_MODE, AWAY_HVAC_KEEP),
         },
         "last_updated": data.last_updated.isoformat() if data.last_updated else None,
     }
