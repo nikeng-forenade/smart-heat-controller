@@ -969,6 +969,15 @@ async def test_panel_registered_with_frontend(
 
     assert async_panel_exists(hass, PANEL_URL_PATH) is True
 
+    # The module URL must carry the version, otherwise the mobile apps keep
+    # running the previous cached bundle after an update.
+    from custom_components.smart_heat_controller.const import VERSION
+
+    panel = hass.data["frontend_panels"][PANEL_URL_PATH]
+    config = panel.config if hasattr(panel, "config") else panel["config"]
+    module_url = config["_panel_custom"]["module_url"]
+    assert module_url.endswith(f"?v={VERSION}")
+
     assert await hass.config_entries.async_unload(mock_entry.entry_id)
     await hass.async_block_till_done()
     assert async_panel_exists(hass, PANEL_URL_PATH) is False

@@ -734,6 +734,10 @@ export class ShcSettingsDrawer extends LitElement {
         <span>${t(this.hass, "lastDecision")}</span>
         <strong>${reasonLabel(this.hass, this.zone?.reason)}</strong>
       </div>
+      <div class="field readonly">
+        <span>${t(this.hass, "version")}</span>
+        <strong>${this.zone?.version ?? "–"}</strong>
+      </div>
     `;
   }
 

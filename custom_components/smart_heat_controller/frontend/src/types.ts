@@ -113,6 +113,7 @@ export interface BaselinePayload {
 export interface ZonePayload {
   entry_id: string;
   name: string;
+  version?: string;
   area?: number | null;
   image_url?: string | null;
   available: boolean;

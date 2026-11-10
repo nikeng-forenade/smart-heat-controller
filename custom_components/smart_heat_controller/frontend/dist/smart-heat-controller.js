@@ -630,6 +630,7 @@ const gt = {
     faults: "Fel",
     noFaults: "Inga fel",
     lastDecision: "Senaste beslut",
+    version: "Version",
     close: "Stäng",
     roomTarget: "Mål hemma",
     awayTarget: "Mål borta",
@@ -727,6 +728,7 @@ const gt = {
     faults: "Faults",
     noFaults: "No faults",
     lastDecision: "Last decision",
+    version: "Version",
     close: "Close",
     roomTarget: "Home target",
     awayTarget: "Away target",
@@ -1826,6 +1828,10 @@ let T = class extends C {
       <div class="field readonly">
         <span>${n(this.hass, "lastDecision")}</span>
         <strong>${ce(this.hass, this.zone?.reason)}</strong>
+      </div>
+      <div class="field readonly">
+        <span>${n(this.hass, "version")}</span>
+        <strong>${this.zone?.version ?? "–"}</strong>
       </div>
     `;
   }

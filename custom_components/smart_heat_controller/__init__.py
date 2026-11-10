@@ -172,9 +172,19 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
         return
 
     try:
-        add_extra_js_url(hass, f"{FRONTEND_URL}/{FRONTEND_FILE}")
+        add_extra_js_url(hass, _bundle_url())
     except (KeyError, AttributeError):  # pragma: no cover - defensive
         _LOGGER.debug("frontend is not ready; the card was not registered")
+
+
+def _bundle_url() -> str:
+    """Module URL with a version marker.
+
+    The static path is registered with cache headers, so a stable URL makes the
+    mobile apps keep running the previous bundle after an update. The query
+    string ties the file to this release.
+    """
+    return f"{FRONTEND_URL}/{FRONTEND_FILE}?v={VERSION}"
 
 
 @callback
@@ -207,7 +217,7 @@ def _async_register_panel(hass: HomeAssistant, coordinator: SmartHeatCoordinator
                 "name": PANEL_COMPONENT,
                 "embed_iframe": False,
                 "trust_external": False,
-                "module_url": f"{FRONTEND_URL}/{FRONTEND_FILE}",
+                "module_url": _bundle_url(),
             }
         },
         require_admin=False,
@@ -551,6 +561,7 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
         return {
             "entry_id": coordinator.entry.entry_id,
             "name": coordinator.zone_name,
+            "version": VERSION,
             "available": False,
             "entities": _entity_map(coordinator),
         }
@@ -563,6 +574,7 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
     return {
         "entry_id": coordinator.entry.entry_id,
         "name": coordinator.zone_name,
+        "version": VERSION,
         "area": config.get("area"),
         "image_url": config.get("image_url"),
         "available": True,
