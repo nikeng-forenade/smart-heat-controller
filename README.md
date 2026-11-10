@@ -104,9 +104,18 @@ A ready-to-use dashboard is in [`dashboards/smart-heat.yaml`](dashboards/smart-h
 Use a **panel mode** view so the card spans the full width.
 
 The settings drawer (gear icon) contains **Allmänt**, **Temperaturer**,
-**Schema**, **Elpris-optimering**, **Energimätning**, **Närvaro** and
-**Avancerat**. Schedule and price edits are written straight to the integration
-through the WebSocket API; nothing is a placeholder.
+**Värmepump**, **Schema**, **Elpris-optimering**, **Energimätning**, **Närvaro**
+and **Avancerat**. Schedule and price edits are written straight to the
+integration through the WebSocket API; nothing is a placeholder.
+
+Every temperature and number is changed with a **− / +** stepper instead of a
+range slider, because drag gestures are unreliable in the Home Assistant mobile
+apps.
+
+**Värmepump** holds the start-up profile: the fan speed and the setpoint sent to
+the air/air unit at the moment the controller switches it into heating (for
+example when everybody comes home again). The normal control loop takes over on
+the following cycle, and a fan speed the unit does not advertise is never sent.
 
 ### Building the card after changing the frontend
 
@@ -144,6 +153,7 @@ Away), which keeps the automation and the manual controls consistent.
 | `smart_heat_controller/set_vacation` | Set the vacation date range |
 | `smart_heat_controller/set_price` | Update price optimisation settings |
 | `smart_heat_controller/set_away_hvac_mode` | Choose what the heat pump does while the zone is away |
+| `smart_heat_controller/set_heatpump_profile` | Fan speed and start temperature used when the pump is started |
 
 ### Services
 

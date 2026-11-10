@@ -136,8 +136,62 @@ services → Smart Heat Controller → Configure → Safety), the panel's settin
 drawer under **Temperaturer**, and the
 `smart_heat_controller/set_away_hvac_mode` WebSocket command.
 
+## Heat pump start-up profile
+
+When the controller itself switches the pump into heating — coming home after
+`away_hvac_mode` put it on `fan_only`/`off`, or `away_hvac_mode: heat` switching
+it back on — it applies the configured start-up profile in the same breath:
+
+| Option | Effect |
+|---|---|
+| `heatpump_fan_mode` | Sent with `climate.set_fan_mode`. Values the unit does not list in its `fan_modes` attribute are skipped, never guessed |
+| `heatpump_start_target` | Sent with `climate.set_temperature` so the unit starts at a known setpoint. Cleared from the controller's remembered command, so the normal loop sends the zone target on the next cycle |
+
+The profile is applied only at that transition; if the fan is changed on the
+remote afterwards the controller does not fight it. Changing the fan speed in
+the panel applies it immediately to a pump that is already heating. Both options
+are stored as config entry options and are editable in the panel's settings
+drawer under **Värmepump** (`smart_heat_controller/set_heatpump_profile`).
+
 Presence resolution order: any entity Home → Home; all available entities Away →
 Away; otherwise Unknown. Unknown presence never silently becomes Away.
+
+## Electricity price
+
+The `price_sensor` is read as SEK/kWh and normalised from the sensor's own unit
+first: `öre/kWh` and `cents/kWh` are divided by 100 and `SEK/MWh` by 1000, so a
+Nordpool sensor configured in öre cannot inflate every cost figure by 100.
+
+The sensor value is treated as **including VAT**, which is what Nordpool
+produces when its VAT setting is on — `sensor.nordpool_kwh_se4_sek_3_10_025`
+ends in `025` precisely because VAT is 25 %. The `price_surcharge` option adds
+the grid transfer fee and energy tax in öre/kWh, quoted including VAT the way
+the invoice shows them.
+
+A live sensor wins over a typed-in `all_in_price`: the sensor follows the spot
+market while a fixed number silently goes stale. `all_in_price` is only used
+when no sensor is configured.
+
+The resolved price carries `spot_sek_per_kwh`, `surcharge` and `vat_percent`
+next to the total, in both the WebSocket payload and the cost sensors'
+attributes, and the panel's **Energimätning** section shows the breakdown so the
+number can be checked against the invoice.
+
+## Outdoor temperature
+
+The card, the chart and the degree-day ledger all use one resolver,
+`_read_outside_temperature()`:
+
+1. the configured `outside_temperature_sensor`,
+2. otherwise the heat pump's own outdoor sensor — MELCloud exposes
+   `outside_temperature` / `outside_temp` on the climate entity,
+3. otherwise the `temperature` attribute of a weather entity (`weather.home`
+   first).
+
+That way an unconfigured option never hides a reading the devices already
+provide. When nothing is available the card says so instead of showing a bare
+dash, and both temperature sensors can be re-pointed later in the options flow
+(**Configure → Temperaturer**).
 
 ## Fault handling
 
@@ -169,7 +223,9 @@ coordination loop.
   "heatpump":  { "power_w": 420, "kwh_today": 4.2, "quality": "measured", "available": true },
   "totals": { "today": { "radiator": {...}, "heatpump": {...}, "total": {...} }, ... },
   "costs":  { "today": { "total": 10.0 }, ... },
-  "price":  { "sek_per_kwh": 2.0, "quality": "measured", "includes_fees": true },
+  "price":  { "sek_per_kwh": 2.0, "spot_sek_per_kwh": 1.06, "surcharge": 0.94,
+              "vat_percent": 25.0, "source": "price_sensor",
+              "quality": "estimated", "includes_fees": true },
   "savings": { "baseline_kwh_per_day": 12.1, "delta_kwh_per_day": 3.9, "..." : "..." },
   "baseline": { "start": "...", "end": "...", "active": false, "recorded": true },
   "series": { "radiator": [...], "heatpump": [...] },

@@ -302,6 +302,133 @@ async def test_manual_pump_choice_is_not_undone_on_arrival(
 
 
 # ---------------------------------------------------------------------------
+# Heat pump start-up profile (fan speed and start temperature)
+# ---------------------------------------------------------------------------
+
+
+def _set_pump_with_fans(hass: HomeAssistant, hvac_mode: str) -> None:
+    hass.states.async_set(
+        PUMP,
+        hvac_mode,
+        {
+            "current_temperature": 20.0,
+            "temperature": 21.0,
+            "fan_mode": "auto",
+            "fan_modes": ["auto", "quiet", "low", "high"],
+        },
+    )
+
+
+async def test_start_profile_is_applied_when_the_pump_starts(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Coming home starts the pump with the configured fan speed and target."""
+    modes: list[str] = []
+    fans: list[str] = []
+    targets: list[float] = []
+
+    def _record_mode(call) -> None:
+        modes.append(call.data.get("hvac_mode"))
+
+    def _record_fan(call) -> None:
+        fans.append(call.data.get("fan_mode"))
+
+    def _record_target(call) -> None:
+        targets.append(float(call.data.get("temperature")))
+
+    hass.services.async_register("climate", "set_hvac_mode", _record_mode)
+    hass.services.async_register("climate", "set_fan_mode", _record_fan)
+    hass.services.async_register("climate", "set_temperature", _record_target)
+
+    hass.config_entries.async_update_entry(
+        loaded,
+        options={
+            **loaded.options,
+            "away_hvac_mode": "fan_only",
+            "heatpump_fan_mode": "high",
+            "heatpump_start_target": 24.0,
+        },
+    )
+    await _refresh(hass, loaded)
+
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+    assert modes[:1] == ["fan_only"]
+
+    _set_pump_with_fans(hass, "fan_only")
+    modes.clear()
+    fans.clear()
+    targets.clear()
+
+    await _set_mode(hass, "home")
+    coordinator = await _refresh(hass, loaded)
+
+    assert modes == ["heat"]
+    assert fans == ["high"]
+    assert targets == [pytest.approx(24.0)]
+    assert coordinator.zone_state.heatpump_target_command is None
+
+
+async def test_start_profile_is_silent_by_default(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Without a configured profile only the HVAC mode is commanded."""
+    fans: list[str] = []
+
+    def _record_fan(call) -> None:
+        fans.append(call.data.get("fan_mode"))
+
+    hass.services.async_register("climate", "set_hvac_mode", lambda call: None)
+    hass.services.async_register("climate", "set_fan_mode", _record_fan)
+    hass.config_entries.async_update_entry(
+        loaded, options={**loaded.options, "away_hvac_mode": "fan_only"}
+    )
+    await _refresh(hass, loaded)
+
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+    _set_pump_with_fans(hass, "fan_only")
+    fans.clear()
+
+    await _set_mode(hass, "home")
+    await _refresh(hass, loaded)
+
+    assert fans == []
+
+
+async def test_unsupported_fan_mode_is_never_sent(
+    hass: HomeAssistant, loaded
+) -> None:
+    """A fan speed the unit does not advertise is skipped instead of guessed."""
+    fans: list[str] = []
+
+    def _record_fan(call) -> None:
+        fans.append(call.data.get("fan_mode"))
+
+    hass.services.async_register("climate", "set_hvac_mode", lambda call: None)
+    hass.services.async_register("climate", "set_fan_mode", _record_fan)
+    hass.config_entries.async_update_entry(
+        loaded,
+        options={
+            **loaded.options,
+            "away_hvac_mode": "fan_only",
+            "heatpump_fan_mode": "turbo",
+        },
+    )
+    await _refresh(hass, loaded)
+
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+    _set_pump_with_fans(hass, "fan_only")
+    fans.clear()
+
+    await _set_mode(hass, "home")
+    await _refresh(hass, loaded)
+
+    assert fans == []
+
+
+# ---------------------------------------------------------------------------
 # Power anomaly
 # ---------------------------------------------------------------------------
 
@@ -640,6 +767,156 @@ async def test_ws_set_away_hvac_mode_rejects_unknown_value(
     response = await client.receive_json()
     assert response["success"] is False
     assert loaded.options.get("away_hvac_mode") is None
+
+
+async def test_ws_set_heatpump_profile(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 8,
+            "type": f"{DOMAIN}/set_heatpump_profile",
+            "entry_id": loaded.entry_id,
+            "fan_mode": "high",
+            "start_target": 23.5,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    await hass.async_block_till_done()
+
+    assert loaded.options["heatpump_fan_mode"] == "high"
+    assert loaded.options["heatpump_start_target"] == pytest.approx(23.5)
+
+    await client.send_json({"id": 9, "type": f"{DOMAIN}/zones"})
+    response = await client.receive_json()
+    settings = response["result"]["zones"][0]["settings"]
+    assert settings["heatpump_fan_mode"] == "high"
+    assert settings["heatpump_start_target"] == pytest.approx(23.5)
+
+    await client.send_json(
+        {
+            "id": 10,
+            "type": f"{DOMAIN}/set_heatpump_profile",
+            "entry_id": loaded.entry_id,
+            "fan_mode": None,
+            "start_target": None,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    await hass.async_block_till_done()
+
+    assert loaded.options["heatpump_fan_mode"] is None
+    assert loaded.options["heatpump_start_target"] is None
+
+
+# ---------------------------------------------------------------------------
+# Electricity price
+# ---------------------------------------------------------------------------
+
+
+async def test_price_sensor_in_ore_is_normalised_to_sek_per_kwh(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Nordpool can report öre/kWh; the cost must not be 100 times too high."""
+    hass.states.async_set(
+        "sensor.nordpool_kwh_se4_sek_3_10_025",
+        "62.5",
+        {"unit_of_measurement": "öre/kWh"},
+    )
+    hass.config_entries.async_update_entry(
+        loaded,
+        options={
+            **loaded.options,
+            "price_sensor": "sensor.nordpool_kwh_se4_sek_3_10_025",
+            "price_surcharge": 94.0,
+        },
+    )
+    coordinator = await _refresh(hass, loaded)
+
+    price = coordinator.data.price
+    assert price.spot_sek_per_kwh == pytest.approx(0.625)
+    assert price.surcharge == pytest.approx(0.94)
+    assert price.sek_per_kwh == pytest.approx(1.565)
+    assert price.vat_percent == pytest.approx(25.0)
+
+
+async def test_live_price_sensor_wins_over_a_stale_all_in_price(
+    hass: HomeAssistant, loaded
+) -> None:
+    hass.states.async_set(
+        "sensor.nordpool_kwh_se4_sek_3_10_025",
+        "0.62",
+        {"unit_of_measurement": "SEK/kWh"},
+    )
+    hass.config_entries.async_update_entry(
+        loaded,
+        options={
+            **loaded.options,
+            "price_sensor": "sensor.nordpool_kwh_se4_sek_3_10_025",
+            "all_in_price": 2.5,
+        },
+    )
+    coordinator = await _refresh(hass, loaded)
+
+    price = coordinator.data.price
+    assert price.source == "price_sensor"
+    assert price.sek_per_kwh == pytest.approx(0.62)
+
+
+# ---------------------------------------------------------------------------
+# Outside temperature
+# ---------------------------------------------------------------------------
+
+
+async def test_outside_temperature_uses_the_configured_sensor(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    hass.config_entries.async_update_entry(
+        loaded,
+        options={**loaded.options, "outside_temperature_sensor": "sensor.outside"},
+    )
+    coordinator = await _refresh(hass, loaded)
+    assert coordinator.data.outside_temperature == pytest.approx(5.0)
+
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 20, "type": f"{DOMAIN}/zones"})
+    response = await client.receive_json()
+    zone = response["result"]["zones"][0]
+    assert zone["outside_temperature"] == pytest.approx(5.0)
+    assert zone["actuators"]["outside_sensor"] == "sensor.outside"
+
+
+async def test_outside_temperature_falls_back_to_the_heat_pump(
+    hass: HomeAssistant, loaded
+) -> None:
+    """MELCloud reports the unit's outdoor sensor on the climate entity."""
+    hass.states.async_set(
+        PUMP,
+        "heat",
+        {
+            "current_temperature": 18.0,
+            "temperature": 21.0,
+            "outside_temperature": -4.5,
+        },
+    )
+    coordinator = await _refresh(hass, loaded)
+    assert coordinator.data.outside_temperature == pytest.approx(-4.5)
+
+
+async def test_outside_temperature_falls_back_to_a_weather_entity(
+    hass: HomeAssistant, loaded
+) -> None:
+    hass.states.async_set(
+        "climate.mitsubishi",
+        "heat",
+        {"current_temperature": 18.0, "temperature": 21.0},
+    )
+    hass.states.async_set("weather.forecast_home", "cloudy", {"temperature": -2.5})
+    coordinator = await _refresh(hass, loaded)
+    assert coordinator.data.outside_temperature == pytest.approx(-2.5)
 
 
 # ---------------------------------------------------------------------------

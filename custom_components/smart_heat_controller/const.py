@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "smart_heat_controller"
 NAME: Final = "Smart Heat Controller"
-VERSION: Final = "0.1.10"
+VERSION: Final = "0.1.11"
 
 PLATFORMS: Final = (
     "binary_sensor",
@@ -91,12 +91,23 @@ CONF_PRICE_MIN_COMFORT: Final = "price_min_comfort"
 
 CONF_SCHEDULE: Final = "schedule"
 CONF_AWAY_HVAC_MODE: Final = "away_hvac_mode"
+
+# Start-up profile for the air/air heat pump: the fan speed and setpoint that
+# are sent at the moment the controller switches the pump into heating. The
+# normal control loop takes over on the following cycle.
+CONF_HEATPUMP_FAN_MODE: Final = "heatpump_fan_mode"
+CONF_HEATPUMP_START_TARGET: Final = "heatpump_start_target"
 CONF_VACATION_START: Final = "vacation_start"
 CONF_VACATION_END: Final = "vacation_end"
 CONF_PANEL_ENABLED: Final = "panel_enabled"
 
 DEFAULT_PRICE_MAX_ADJUST: Final = 1.0
 DEFAULT_PRICE_MIN_COMFORT: Final = 18.0
+
+# Swedish VAT. Nordpool adds it to the sensor value when its VAT setting is on,
+# so the price sensor is treated as VAT included; the surcharge is quoted the
+# same way on an invoice. The percentage is only used to label the numbers.
+PRICE_VAT_PERCENT: Final = 25.0
 
 # What to do with the heat pump when the zone is away. ``keep`` leaves it
 # heating towards the away target, ``heat`` switches it back on so it takes over

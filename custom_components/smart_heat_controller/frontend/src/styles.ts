@@ -171,6 +171,35 @@ export const sharedStyles = css`
     cursor: not-allowed;
   }
 
+  /* Touch friendly − / + control. Range inputs are unreliable in the mobile app,
+     so every setting is stepped with real buttons instead. */
+  .stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stepper button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    font-size: 21px;
+    font-weight: 600;
+    line-height: 1;
+    border-radius: 12px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .stepper output {
+    min-width: 74px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
   .muted {
     color: var(--shc-muted);
     font-size: 13px;

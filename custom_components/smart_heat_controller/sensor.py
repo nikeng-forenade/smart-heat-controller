@@ -77,6 +77,9 @@ def _price_attrs(data: ZoneData) -> dict[str, object]:
         "price_quality": data.price.quality,
         "includes_fees": data.price.includes_fees,
         "sek_per_kwh": data.price.sek_per_kwh,
+        "spot_sek_per_kwh": data.price.spot_sek_per_kwh,
+        "surcharge_sek_per_kwh": data.price.surcharge,
+        "vat_percent": data.price.vat_percent,
     }
 
 

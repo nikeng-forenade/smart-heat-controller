@@ -19,6 +19,8 @@ const STRINGS = {
     settings: "Inställningar",
     room: "Rumstemperatur",
     outside: "Utetemperatur",
+    outsideMissing:
+      "Ingen utetemperatursensor vald – använd pumpens utegivare, en vädersensor eller välj sensor i inställningarna.",
     presence: "Närvaro",
     unknown: "Okänd",
     measured: "Mätt",
@@ -85,6 +87,32 @@ const STRINGS = {
     manualOverride: "Manuell överstyrning i 30 minuter",
     noEntities: "Integationen är inte konfigurerad.",
     demo: "Demodata",
+    decrease: "Minska",
+    increase: "Öka",
+    heatpumpSection: "Värmepump",
+    fanSpeed: "Fläkthastighet vid start",
+    fanSpeedHint:
+      "Skickas till pumpen när styrenheten sätter på den. Ändrar du fläkten på fjärrkontrollen rör vi den inte igen.",
+    fanKeep: "Behåll som den är",
+    fanNone:
+      "Pumpen rapporterar inga fläktlägen – styr fläkten på fjärrkontrollen i stället.",
+    startTarget: "Starttemperatur",
+    startTargetHint:
+      "Börvärdet som skickas i samma stund som pumpen startas. Därefter tar rummets mål över.",
+    startTargetAuto: "Inte satt – rummets mål används.",
+    startTargetCustom: "Egen starttemperatur används.",
+    clear: "Nollställ",
+    now: "Nu",
+    priceSpot: "Spotpris",
+    priceSurcharge: "Nätavgift + energiskatt",
+    priceTotal: "Totalt pris",
+    inclVat: "inkl. moms",
+    priceSourceSensor: "Källa: prissensorn (live).",
+    priceSourceAllIn: "Källa: fast all-in-pris från inställningarna.",
+    priceSourceNone: "Inget elpris valt – koppla en prissensor under Elpris-optimering.",
+    priceHintTotal: "Spot + nätavgift och energiskatt, allt inkl. moms.",
+    priceHintSpot:
+      "Spotpriset inkluderar moms men saknar nätavgift och energiskatt – fyll i dem under Elpris-optimering.",
   },
   en: {
     auto: "Auto",
@@ -95,6 +123,8 @@ const STRINGS = {
     settings: "Settings",
     room: "Room temperature",
     outside: "Outside temperature",
+    outsideMissing:
+      "No outside temperature available – use the unit's own outdoor sensor, a weather entity, or pick a sensor in the settings.",
     presence: "Presence",
     unknown: "Unknown",
     measured: "Measured",
@@ -160,6 +190,31 @@ const STRINGS = {
     manualOverride: "Manual override for 30 minutes",
     noEntities: "The integration is not configured.",
     demo: "Demo data",
+    decrease: "Decrease",
+    increase: "Increase",
+    heatpumpSection: "Heat pump",
+    fanSpeed: "Fan speed at start",
+    fanSpeedHint:
+      "Sent to the unit when the controller switches it on. If you change the fan on the remote we leave it alone.",
+    fanKeep: "Leave as it is",
+    fanNone: "The unit reports no fan speeds – use the remote to change the fan.",
+    startTarget: "Start temperature",
+    startTargetHint:
+      "The setpoint sent at the moment the unit starts. The room target takes over afterwards.",
+    startTargetAuto: "Not set – the room target is used.",
+    startTargetCustom: "A custom start temperature is used.",
+    clear: "Reset",
+    now: "Now",
+    priceSpot: "Spot price",
+    priceSurcharge: "Grid fee + energy tax",
+    priceTotal: "Total price",
+    inclVat: "incl. VAT",
+    priceSourceSensor: "Source: the price sensor (live).",
+    priceSourceAllIn: "Source: fixed all-in price from the settings.",
+    priceSourceNone: "No electricity price selected – connect a price sensor under Price optimisation.",
+    priceHintTotal: "Spot + grid fee and energy tax, all including VAT.",
+    priceHintSpot:
+      "The spot price includes VAT but not the grid fee or energy tax – add them under Price optimisation.",
   },
 } as const;
 

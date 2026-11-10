@@ -604,6 +604,24 @@ class SmartHeatOptionsFlow(OptionsFlow):
 
         schema = vol.Schema(
             {
+                vol.Optional(
+                    CONF_TEMPERATURE_SENSOR,
+                    default=_optional_default(current, CONF_TEMPERATURE_SENSOR),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor", device_class="temperature"
+                    )
+                ),
+                vol.Optional(
+                    CONF_OUTSIDE_TEMPERATURE_SENSOR,
+                    default=_optional_default(
+                        current, CONF_OUTSIDE_TEMPERATURE_SENSOR
+                    ),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor", device_class="temperature"
+                    )
+                ),
                 vol.Required(
                     CONF_HOME_TARGET, default=current.get(CONF_HOME_TARGET)
                 ): TEMP_SELECTOR,

@@ -103,9 +103,19 @@ def test_missing_thresholds_disable_that_side():
     assert optimise_for_price(9.99, settings, base_target=21.0, presence_home=True).offset == 0.0
 
 
-def test_resolve_prefers_all_in_price():
-    info = resolve_price(sensor_price=0.8, all_in_price=2.4)
+def test_resolve_prefers_the_live_sensor_over_a_stale_all_in_price():
+    """A typed-in all-in price goes stale; the sensor follows the market."""
+    info = resolve_price(sensor_price=0.8, all_in_price=2.4, vat_percent=25.0)
+    assert info.sek_per_kwh == pytest.approx(0.8)
+    assert info.source == "price_sensor"
+    assert info.spot_sek_per_kwh == pytest.approx(0.8)
+    assert info.vat_percent == pytest.approx(25.0)
+
+
+def test_all_in_price_is_used_when_no_sensor_is_configured():
+    info = resolve_price(sensor_price=None, all_in_price=2.4)
     assert info.sek_per_kwh == pytest.approx(2.4)
+    assert info.source == "all_in_price"
     assert info.includes_fees is True
 
 
@@ -123,13 +133,15 @@ def test_surcharge_adds_network_fees_and_energy_tax():
     assert info.sek_per_kwh == pytest.approx(1.74)
     assert info.includes_fees is True
     assert info.surcharge == pytest.approx(0.94)
+    assert info.spot_sek_per_kwh == pytest.approx(0.8)
     assert info.quality == "estimated"
 
 
-def test_surcharge_is_ignored_when_an_all_in_price_is_configured():
+def test_surcharge_also_applies_when_an_all_in_price_is_configured():
+    """The live sensor wins, so its surcharge is added as usual."""
     info = resolve_price(sensor_price=0.8, all_in_price=2.0, surcharge=0.94)
-    assert info.sek_per_kwh == pytest.approx(2.0)
-    assert info.surcharge == 0.0
+    assert info.sek_per_kwh == pytest.approx(1.74)
+    assert info.surcharge == pytest.approx(0.94)
 
 
 def test_cost_is_none_without_price():
@@ -139,3 +151,9 @@ def test_cost_is_none_without_price():
 def test_cost_uses_all_in_price():
     info = resolve_price(sensor_price=None, all_in_price=2.0)
     assert estimate_cost(5.0, info) == pytest.approx(10.0)
+
+
+def test_missing_sensor_and_price_leaves_vat_labelling_intact():
+    info = resolve_price(sensor_price=None, all_in_price=None, vat_percent=25.0)
+    assert info.available is False
+    assert info.vat_percent == pytest.approx(25.0)

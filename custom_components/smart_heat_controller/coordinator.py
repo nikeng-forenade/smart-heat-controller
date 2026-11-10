@@ -41,7 +41,9 @@ from .const import (
     CONF_DRY_RUN,
     CONF_FALLBACK_RADIATOR,
     CONF_HEATPUMP_ENERGY_SENSOR,
+    CONF_HEATPUMP_FAN_MODE,
     CONF_HEATPUMP_POWER_SENSOR,
+    CONF_HEATPUMP_START_TARGET,
     CONF_HOME_TARGET,
     CONF_HYSTERESIS,
     CONF_MIN_OFF_MINUTES,
@@ -77,6 +79,7 @@ from .const import (
     AWAY_HVAC_HEAT,
     DOMAIN,
     LEDGER_RETENTION_DAYS,
+    PRICE_VAT_PERCENT,
     QUALITY_ESTIMATED,
     QUALITY_MEASURED,
     QUALITY_MISSING,
@@ -134,6 +137,13 @@ HEATING_HVAC_MODES = frozenset({"heat", "heat_cool", "auto"})
 # HVAC modes in which the pump is deliberately removing heat or humidity; the
 # radiator must not add heat against it.
 COOLING_HVAC_MODES = frozenset({"cool", "dry"})
+
+# Attributes a climate entity may expose for its own outdoor sensor.
+OUTSIDE_TEMPERATURE_ATTRIBUTES = (
+    "outside_temperature",
+    "outside_temp",
+    "outdoor_temperature",
+)
 
 # How long a commanded radiator state may stay out of sync with the device
 # before the difference is treated as a change made outside the controller.
@@ -530,6 +540,51 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         except (TypeError, ValueError):
             return None, None
 
+    def _read_outside_temperature(self) -> float | None:
+        """Best available outdoor reading.
+
+        The configured sensor wins. Without one, the heat pump's own outdoor
+        sensor (MELCloud reports ``outside_temperature`` on the climate entity)
+        and a weather entity's ``temperature`` are used, so an empty option does
+        not hide a perfectly good reading.
+        """
+        value = self._read_float(
+            self.config_data.get(CONF_OUTSIDE_TEMPERATURE_SENSOR)
+        )
+        if value is not None:
+            return value
+
+        climate_state = self._climate_state()
+        if climate_state is not None:
+            for attribute in OUTSIDE_TEMPERATURE_ATTRIBUTES:
+                raw = climate_state.attributes.get(attribute)
+                if raw is None:
+                    continue
+                try:
+                    return float(raw)
+                except (TypeError, ValueError):
+                    continue
+
+        return self._weather_temperature()
+
+    def _weather_temperature(self) -> float | None:
+        """``temperature`` from a weather entity, ``weather.home`` first."""
+        states = [
+            state
+            for state in self.hass.states.async_all("weather")
+            if state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+            and state.attributes.get("temperature") is not None
+        ]
+        states.sort(
+            key=lambda state: (state.entity_id != "weather.home", state.entity_id)
+        )
+        for state in states:
+            try:
+                return float(state.attributes["temperature"])
+            except (TypeError, ValueError):
+                continue
+        return None
+
     def _read_presence_raw(self) -> Presence:
         entities = self.config_data.get(CONF_PRESENCE_ENTITIES) or []
         if not entities:
@@ -620,27 +675,32 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return
         self._applying = True
         try:
-            await self._apply_away_hvac_mode(decision)
-            await self._apply_heatpump(decision, snapshot)
+            started = await self._apply_away_hvac_mode(decision)
+            if not started:
+                await self._apply_heatpump(decision, snapshot)
             await self._apply_radiator(decision, snapshot)
         finally:
             self._applying = False
 
-    async def _apply_away_hvac_mode(self, decision: Decision) -> None:
+    async def _apply_away_hvac_mode(self, decision: Decision) -> bool:
         """Switch the heat pump off or to fan while the zone is away.
 
         Leaving the pump heating an empty house costs money for nothing, and a
         fan-only unit keeps the air moving without heating. The mode we applied
         is remembered so coming home restores heating again.
+
+        Returns True when the pump was started this cycle, in which case the
+        caller must leave the setpoint alone so the start-up profile is not
+        overwritten immediately.
         """
         desired = self.config_data.get(CONF_AWAY_HVAC_MODE, AWAY_HVAC_KEEP)
         entity_id = self.config_data.get(CONF_PRIMARY_CLIMATE)
         if desired == AWAY_HVAC_KEEP or not entity_id:
-            return
+            return False
 
         state = self._climate_state()
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            return
+            return False
 
         if decision.effective_mode is Mode.AWAY:
             if desired == AWAY_HVAC_HEAT:
@@ -648,23 +708,25 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
                 # zone is away the pump takes the load instead of the radiator,
                 # so switch it back into heating if it is idle.
                 if state.state not in HEATING_HVAC_MODES:
-                    await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
-                return
+                    return await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
+                return False
             if state.state == desired:
                 self._state.heatpump_hvac_applied = desired
-                return
+                return False
             self._state.heatpump_hvac_applied = desired
             await self._set_hvac_mode(entity_id, str(desired))
-            return
+            return False
 
         applied = self._state.heatpump_hvac_applied
         if applied is None:
-            return
+            return False
         self._state.heatpump_hvac_applied = None
         if state.state == applied:
-            await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
+            return await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
+        return False
 
-    async def _set_hvac_mode(self, entity_id: str, hvac_mode: str) -> None:
+    async def _set_hvac_mode(self, entity_id: str, hvac_mode: str) -> bool:
+        """Send an HVAC mode command; True when the pump was switched to heat."""
         now = dt_util.now()
         if (
             self._last_hvac_command is not None
@@ -673,7 +735,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         ):
             # The device may take a moment to report the new mode; do not
             # repeat the same command on every tick while it catches up.
-            return
+            return False
         self._last_hvac_command = (hvac_mode, now)
         _LOGGER.debug(
             "%s: setting %s hvac mode to %s", self.zone_name, entity_id, hvac_mode
@@ -689,6 +751,81 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             _LOGGER.warning(
                 "%s: could not set heat pump mode: %s", self.zone_name, err
             )
+            return False
+        if hvac_mode != str(HVACMode.HEAT):
+            return False
+        await self._apply_start_profile(entity_id)
+        return True
+
+    async def _apply_start_profile(self, entity_id: str) -> None:
+        """Apply the configured fan speed and start setpoint to a pump we started."""
+        conf = self.config_data
+        fan_mode = conf.get(CONF_HEATPUMP_FAN_MODE)
+        if fan_mode:
+            await self._set_fan_mode(entity_id, str(fan_mode))
+
+        target = _opt_float(conf.get(CONF_HEATPUMP_START_TARGET))
+        if target is None:
+            return
+        if await self._set_temperature(entity_id, target):
+            # Let the control loop push the zone setpoint again next cycle, but
+            # not before the start-up temperature has been seen once.
+            self._state.heatpump_target_command = None
+
+    async def _set_fan_mode(self, entity_id: str, fan_mode: str) -> bool:
+        state = self.hass.states.get(entity_id)
+        supported = (
+            state.attributes.get("fan_modes") if state is not None else None
+        ) or []
+        if fan_mode not in supported:
+            _LOGGER.debug(
+                "%s: %s does not support fan mode %s",
+                self.zone_name,
+                entity_id,
+                fan_mode,
+            )
+            return False
+        if state is not None and state.attributes.get("fan_mode") == fan_mode:
+            return True
+        try:
+            await self.hass.services.async_call(
+                "climate",
+                "set_fan_mode",
+                {"entity_id": entity_id, "fan_mode": fan_mode},
+                blocking=False,
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning(
+                "%s: could not set heat pump fan speed: %s", self.zone_name, err
+            )
+            return False
+        return True
+
+    async def _set_temperature(self, entity_id: str, temperature: float) -> bool:
+        try:
+            await self.hass.services.async_call(
+                "climate",
+                "set_temperature",
+                {"entity_id": entity_id, "temperature": temperature},
+                blocking=False,
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning(
+                "%s: could not set heat pump target: %s", self.zone_name, err
+            )
+            return False
+        return True
+
+    async def async_apply_heatpump_profile(self) -> None:
+        """Push the configured fan speed to a pump that is already heating."""
+        entity_id = self.config_data.get(CONF_PRIMARY_CLIMATE)
+        fan_mode = self.config_data.get(CONF_HEATPUMP_FAN_MODE)
+        if not entity_id or not fan_mode:
+            return
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state not in HEATING_HVAC_MODES:
+            return
+        await self._set_fan_mode(entity_id, str(fan_mode))
 
     async def _apply_heatpump(
         self, decision: Decision, snapshot: ZoneSnapshot
@@ -710,17 +847,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             decision.heatpump_target,
             decision.dry_run,
         )
-        try:
-            await self.hass.services.async_call(
-                "climate",
-                "set_temperature",
-                {"entity_id": entity_id, "temperature": decision.heatpump_target},
-                blocking=False,
-            )
-        except HomeAssistantError as err:
-            _LOGGER.warning(
-                "%s: could not set heat pump target: %s", self.zone_name, err
-            )
+        await self._set_temperature(entity_id, decision.heatpump_target)
 
     async def _apply_radiator(self, decision: Decision, snapshot: ZoneSnapshot) -> None:
         if decision.radiator_on is None:
@@ -791,7 +918,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         )
         self._ledger.prune(today, LEDGER_RETENTION_DAYS)
 
-        outside = self._read_float(conf.get(CONF_OUTSIDE_TEMPERATURE_SENSOR))
+        outside = self._read_outside_temperature()
         if outside is not None:
             self._temperatures.add(today, outside)
         self._temperatures.prune(today, LEDGER_RETENTION_DAYS)
@@ -911,8 +1038,10 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         price = resolve_price(
             sensor_price=self._price_sensor_value(conf.get(CONF_PRICE_SENSOR)),
             all_in_price=_opt_float(conf.get(CONF_ALL_IN_PRICE)),
-            # Stored in öre/kWh because that is how Swedish invoices list it.
+            # Stored in öre/kWh because that is how Swedish invoices list it,
+            # already including VAT like the invoice does.
             surcharge=(_opt_float(conf.get(CONF_PRICE_SURCHARGE)) or 0.0) / 100.0,
+            vat_percent=PRICE_VAT_PERCENT,
         )
 
         periods = {
@@ -959,9 +1088,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             price=price,
             savings=savings,
             savings_warning=radiator_savings_only(heatpump_measured),
-            outside_temperature=self._read_float(
-                conf.get(CONF_OUTSIDE_TEMPERATURE_SENSOR)
-            ),
+            outside_temperature=self._read_outside_temperature(),
             schedule_target=self._schedule_target,
             price_decision=self._price_decision,
             last_updated=now,
@@ -979,15 +1106,28 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return None
 
     def _price_sensor_value(self, entity_id: str | None) -> float | None:
+        """Current price in SEK/kWh, normalised from the sensor's own unit.
+
+        Spot sensors come in öre/kWh, cents/kWh, SEK/MWh or SEK/kWh depending on
+        how they are configured; reading the state without looking at the unit
+        is what makes a price look wrong by a factor of 100.
+        """
         if not entity_id:
             return None
         state = self.hass.states.get(entity_id)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return None
         try:
-            return float(state.state)
+            value = float(state.state)
         except (TypeError, ValueError):
             return None
+
+        unit = str(state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) or "").lower()
+        if "öre" in unit or "ore" in unit or "cent" in unit or "¢" in unit:
+            return round(value / 100.0, 4)
+        if "mwh" in unit:
+            return round(value / 1000.0, 4)
+        return value
 
     # ------------------------------------------------------------------
     # Persistence

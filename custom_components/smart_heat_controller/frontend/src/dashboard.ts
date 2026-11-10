@@ -13,6 +13,7 @@ import {
   reasonLabel,
   t,
 } from "./format";
+import { stepper } from "./stepper";
 import { sharedStyles } from "./styles";
 import type {
   CardConfig,
@@ -275,22 +276,14 @@ export class SmartHeatDashboard extends LitElement {
 
       .quick-row {
         display: grid;
-        grid-template-columns: minmax(120px, 200px) 1fr 62px;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
         gap: 10px;
-        padding: 8px 0;
+        padding: 6px 0;
       }
 
-      .quick-row input[type="range"] {
-        width: 100%;
-        accent-color: var(--shc-blue);
-      }
-
-      .quick-row output {
-        font-variant-numeric: tabular-nums;
-        font-weight: 600;
-        min-width: 58px;
-        text-align: right;
+      .quick-row + .quick-row {
+        border-top: 1px dashed var(--shc-border);
       }
 
       .quick-name {
@@ -520,7 +513,8 @@ export class SmartHeatDashboard extends LitElement {
   }
 
   private async loadOutsideHistory(): Promise<void> {
-    const sensor = this.zone?.actuators?.outside_sensor;
+    const sensor =
+      this.zone?.actuators?.outside_sensor ?? this.entity("outside_temperature");
     if (!this.hass || !sensor) {
       return;
     }
@@ -758,6 +752,9 @@ export class SmartHeatDashboard extends LitElement {
             <div class="value">
               ${formatNumber(this.hass, this.outsideTemperature(), 1)} °C
             </div>
+            ${this.outsideTemperature() == null
+              ? html`<div class="muted">${t(this.hass, "outsideMissing")}</div>`
+              : nothing}
           </div>
 
           <div
@@ -1140,21 +1137,21 @@ export class SmartHeatDashboard extends LitElement {
     label: string,
     value: number | null | undefined,
   ) {
-    const disabled = !this.entity(key);
+    const disabled = !this.entity(key) || this.pending.has(key);
     return html`
       <div class="quick-row">
         <span class="quick-name">${label}</span>
-        <input
-          type="range"
-          min="5"
-          max="30"
-          step="0.5"
-          .value=${String(value ?? 20)}
-          ?disabled=${disabled}
-          @change=${(event: Event) =>
-            this.setNumber(key, Number((event.target as HTMLInputElement).value))}
-        />
-        <output>${formatNumber(this.hass, value, 1)} °C</output>
+        ${stepper({
+          hass: this.hass,
+          value,
+          min: 5,
+          max: 30,
+          step: 0.5,
+          disabled,
+          onStep: (next) => {
+            void this.setNumber(key, next);
+          },
+        })}
       </div>
     `;
   }
@@ -1184,6 +1181,10 @@ export class SmartHeatDashboard extends LitElement {
   }
 
   private outsideTemperature(): number | null {
+    const resolved = this.zone?.outside_temperature;
+    if (typeof resolved === "number" && Number.isFinite(resolved)) {
+      return resolved;
+    }
     const entityId = this.zone?.actuators?.outside_sensor;
     if (!entityId) {
       return null;

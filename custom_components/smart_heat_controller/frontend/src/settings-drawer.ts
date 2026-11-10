@@ -2,8 +2,9 @@
 
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { formatNumber, formatTime, modeLabel, presenceLabel, reasonLabel, t } from "./format";
+import { formatNumber, formatTime, language, modeLabel, presenceLabel, reasonLabel, t } from "./format";
 import type { StringKey } from "./format";
+import { stepper } from "./stepper";
 import { sharedStyles } from "./styles";
 import type {
   HomeAssistant,
@@ -16,6 +17,7 @@ import type {
 type SectionId =
   | "general"
   | "temperatures"
+  | "heatpump"
   | "schedule"
   | "price"
   | "energy"
@@ -25,6 +27,7 @@ type SectionId =
 const SECTIONS: Array<{ id: SectionId; key: Parameters<typeof t>[1] }> = [
   { id: "general", key: "general" },
   { id: "temperatures", key: "temperatures" },
+  { id: "heatpump", key: "heatpumpSection" },
   { id: "schedule", key: "schedule" },
   { id: "price", key: "price" },
   { id: "energy", key: "energyMetering" },
@@ -136,23 +139,6 @@ export class ShcSettingsDrawer extends LitElement {
         font-weight: 600;
       }
 
-      .slider {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .slider input {
-        width: 130px;
-        accent-color: var(--shc-blue);
-      }
-
-      .slider output {
-        min-width: 34px;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-
       .field select {
         font: inherit;
         font-size: 13px;
@@ -260,6 +246,8 @@ export class ShcSettingsDrawer extends LitElement {
 
   @state() private section: SectionId = "general";
 
+  @state() private pending = new Set<string>();
+
   private close(): void {
     this.dispatchEvent(
       new CustomEvent("shc-close", { bubbles: true, composed: true }),
@@ -275,10 +263,18 @@ export class ShcSettingsDrawer extends LitElement {
     if (!entityId || !this.hass) {
       return;
     }
-    await this.hass.callService("number", "set_value", {
-      entity_id: entityId,
-      value,
-    });
+    this.pending = new Set(this.pending).add(key);
+    try {
+      await this.hass.callService("number", "set_value", {
+        entity_id: entityId,
+        value,
+      });
+    } finally {
+      const next = new Set(this.pending);
+      next.delete(key);
+      this.pending = next;
+      this.notifyRefresh();
+    }
   }
 
   private async toggleDryRun(on: boolean): Promise<void> {
@@ -691,6 +687,8 @@ export class ShcSettingsDrawer extends LitElement {
     switch (this.section) {
       case "temperatures":
         return this.renderTemperatures();
+      case "heatpump":
+        return this.renderHeatpump();
       case "schedule":
         return this.renderSchedule();
       case "price":
@@ -770,10 +768,10 @@ export class ShcSettingsDrawer extends LitElement {
   private renderTemperatures() {
     const settings = this.zone?.settings;
     return html`
-      ${this.slider("home_target", t(this.hass, "roomTarget"), settings?.home_target, 5, 30, 0.5)}
-      ${this.slider("away_target", t(this.hass, "awayTarget"), settings?.away_target, 5, 30, 0.5)}
+      ${this.stepperRow("home_target", t(this.hass, "roomTarget"), settings?.home_target, 5, 30, 0.5)}
+      ${this.stepperRow("away_target", t(this.hass, "awayTarget"), settings?.away_target, 5, 30, 0.5)}
       ${this.renderAwayHvacMode()}
-      ${this.slider(
+      ${this.stepperRow(
         "radiator_on_below",
         t(this.hass, "onBelow"),
         settings?.radiator_on_below,
@@ -781,7 +779,7 @@ export class ShcSettingsDrawer extends LitElement {
         30,
         0.5,
       )}
-      ${this.slider(
+      ${this.stepperRow(
         "radiator_off_above",
         t(this.hass, "offAbove"),
         settings?.radiator_off_above,
@@ -789,23 +787,113 @@ export class ShcSettingsDrawer extends LitElement {
         30,
         0.5,
       )}
-      ${this.slider(
+      ${this.stepperRow(
         "min_on_minutes",
         "Minsta ON-tid",
         settings?.min_on_minutes,
         0,
         120,
         1,
+        "min",
       )}
-      ${this.slider(
+      ${this.stepperRow(
         "min_off_minutes",
         "Minsta OFF-tid",
         settings?.min_off_minutes,
         0,
         120,
         1,
+        "min",
       )}
     `;
+  }
+
+  private renderHeatpump() {
+    const settings = this.zone?.settings;
+    const heatpump = this.zone?.heatpump;
+    const fanMode = settings?.heatpump_fan_mode ?? "";
+    const startTarget = settings?.heatpump_start_target ?? null;
+    const fallback = settings?.home_target ?? 21;
+    const fanModes = (heatpump?.fan_modes ?? []).filter((mode) => mode);
+    const active = heatpump?.fan_mode;
+    const busy = this.pending.has("heatpump");
+
+    const save = (mode: string | null, target: number | null): void => {
+      void this.saveHeatpumpProfile(mode, target);
+    };
+
+    return html`
+      <div class="field">
+        <span>${t(this.hass, "fanSpeed")}</span>
+        <select
+          .value=${fanMode}
+          @change=${(event: Event) =>
+            save((event.target as HTMLSelectElement).value || null, startTarget)}
+        >
+          <option value="" ?selected=${fanMode === ""}>
+            ${t(this.hass, "fanKeep")}
+          </option>
+          ${fanModes.map(
+            (mode) =>
+              html`<option value=${mode} ?selected=${mode === fanMode}>
+                ${fanModeLabel(this.hass, mode)}
+              </option>`,
+          )}
+        </select>
+      </div>
+      ${fanModes.length === 0
+        ? html`<p class="hint">${t(this.hass, "fanNone")}</p>`
+        : nothing}
+      ${active
+        ? html`<p class="hint">${t(this.hass, "now")}: ${fanModeLabel(this.hass, active)}</p>`
+        : nothing}
+      <p class="hint">${t(this.hass, "fanSpeedHint")}</p>
+
+      <div class="field">
+        <span>${t(this.hass, "startTarget")}</span>
+        ${stepper({
+          hass: this.hass,
+          value: startTarget ?? fallback,
+          min: 5,
+          max: 30,
+          step: 0.5,
+          disabled: busy,
+          onStep: (value) => save(fanMode || null, value),
+        })}
+      </div>
+      <p class="hint">
+        ${startTarget == null ? t(this.hass, "startTargetAuto") : t(this.hass, "startTargetCustom")}
+        ${startTarget == null
+          ? nothing
+          : html` <button class="link" @click=${() => save(fanMode || null, null)}>
+              ${t(this.hass, "clear")}
+            </button>`}
+      </p>
+      <p class="hint">${t(this.hass, "startTargetHint")}</p>
+    `;
+  }
+
+  private async saveHeatpumpProfile(
+    fanMode: string | null,
+    startTarget: number | null,
+  ): Promise<void> {
+    if (!this.hass || !this.zone?.entry_id) {
+      return;
+    }
+    this.pending = new Set(this.pending).add("heatpump");
+    try {
+      await this.hass.callWS({
+        type: "smart_heat_controller/set_heatpump_profile",
+        entry_id: this.zone.entry_id,
+        fan_mode: fanMode,
+        start_target: startTarget,
+      });
+    } finally {
+      const next = new Set(this.pending);
+      next.delete("heatpump");
+      this.pending = next;
+      this.notifyRefresh();
+    }
   }
 
   private renderEnergy() {
@@ -831,17 +919,41 @@ export class ShcSettingsDrawer extends LitElement {
         <strong>${formatNumber(this.hass, radiator?.kwh_today, 2)} kWh</strong>
       </div>
       <div class="field readonly">
-        <span>Elpris</span>
+        <span>
+          ${t(this.hass, "priceSpot")} (${t(this.hass, "inclVat")}
+          ${formatNumber(this.hass, price?.vat_percent ?? 25, 0)} %)
+        </span>
+        <strong>
+          ${price?.spot_sek_per_kwh != null
+            ? `${formatNumber(this.hass, price.spot_sek_per_kwh, 2)} kr/kWh`
+            : "–"}
+        </strong>
+      </div>
+      ${price && price.includes_fees
+        ? html`<div class="field readonly">
+            <span>${t(this.hass, "priceSurcharge")}</span>
+            <strong>${formatNumber(this.hass, price.surcharge, 2)} kr/kWh</strong>
+          </div>`
+        : nothing}
+      <div class="field readonly">
+        <span>${t(this.hass, "priceTotal")}</span>
         <strong>
           ${price?.sek_per_kwh != null
-            ? `${formatNumber(this.hass, price.sek_per_kwh, 2)} SEK/kWh`
+            ? `${formatNumber(this.hass, price.sek_per_kwh, 2)} kr/kWh`
             : "–"}
         </strong>
       </div>
       <p class="hint">
-        ${price && !price.includes_fees
-          ? "Endast spotpris – nätavgift, skatt och moms tillkommer."
-          : ""}
+        ${price?.source === "all_in_price"
+          ? t(this.hass, "priceSourceAllIn")
+          : price?.source === "price_sensor"
+            ? t(this.hass, "priceSourceSensor")
+            : t(this.hass, "priceSourceNone")}
+      </p>
+      <p class="hint">
+        ${price?.includes_fees
+          ? t(this.hass, "priceHintTotal")
+          : t(this.hass, "priceHintSpot")}
       </p>
 
       <div class="actions">
@@ -884,7 +996,7 @@ export class ShcSettingsDrawer extends LitElement {
         <span>${t(this.hass, "faults")}</span>
         <strong>${faults.length ? faults.join(", ") : t(this.hass, "noFaults")}</strong>
       </div>
-      ${this.slider(
+      ${this.stepperRow(
         "hysteresis",
         "Hysteres (°C)",
         this.zone?.settings?.hysteresis,
@@ -892,7 +1004,7 @@ export class ShcSettingsDrawer extends LitElement {
         3,
         0.1,
       )}
-      ${this.slider(
+      ${this.stepperRow(
         "min_safety_temp",
         "Lägsta säkerhetstemp (°C)",
         this.zone?.settings?.min_safety_temp,
@@ -906,34 +1018,59 @@ export class ShcSettingsDrawer extends LitElement {
     `;
   }
 
-  private slider(
+  private stepperRow(
     key: string,
     label: string,
     value: number | null | undefined,
     min: number,
     max: number,
     step: number,
+    unit = "°C",
   ) {
-    const disabled = !this.entity(key);
+    const disabled = !this.entity(key) || this.pending.has(key);
     return html`
-      <label class="field">
+      <div class="field">
         <span>${label}</span>
-        <div class="slider">
-          <input
-            type="range"
-            min=${min}
-            max=${max}
-            step=${step}
-            .value=${String(value ?? min)}
-            ?disabled=${disabled}
-            @change=${(event: Event) =>
-              this.setNumber(key, Number((event.target as HTMLInputElement).value))}
-          />
-          <output>${formatNumber(this.hass, value, step < 1 ? 1 : 0)}</output>
-        </div>
-      </label>
+        ${stepper({
+          hass: this.hass,
+          value,
+          min,
+          max,
+          step,
+          unit,
+          disabled,
+          onStep: (next) => {
+            void this.setNumber(key, next);
+          },
+        })}
+      </div>
     `;
   }
+}
+
+/** Friendly labels for the fan speeds Home Assistant may report. */
+const FAN_MODE_LABELS: Record<string, { sv: string; en: string }> = {
+  auto: { sv: "Auto", en: "Auto" },
+  quiet: { sv: "Tyst", en: "Quiet" },
+  low: { sv: "Låg", en: "Low" },
+  medium: { sv: "Medel", en: "Medium" },
+  medium_low: { sv: "Medel-låg", en: "Medium low" },
+  medium_high: { sv: "Medel-hög", en: "Medium high" },
+  high: { sv: "Hög", en: "High" },
+  strong: { sv: "Max", en: "Strong" },
+  "1": { sv: "1", en: "1" },
+  "2": { sv: "2", en: "2" },
+  "3": { sv: "3", en: "3" },
+  "4": { sv: "4", en: "4" },
+  "5": { sv: "5", en: "5" },
+};
+
+function fanModeLabel(hass: HomeAssistant | undefined, mode: string): string {
+  const entry = FAN_MODE_LABELS[mode.toLowerCase()];
+  if (!entry) {
+    return mode;
+  }
+  return language(hass) === "en" ? entry.en : entry.sv;
 }
 
 declare global {

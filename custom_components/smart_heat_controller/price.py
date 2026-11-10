@@ -13,13 +13,21 @@ from .const import QUALITY_ESTIMATED, QUALITY_MEASURED, QUALITY_MISSING
 
 @dataclass(slots=True)
 class PriceInfo:
-    """Resolved price for cost calculations."""
+    """Resolved price for cost calculations.
+
+    All amounts are SEK/kWh including VAT. ``spot_sek_per_kwh`` keeps the raw
+    sensor contribution so the panel can show how the total is built; a total
+    without that breakdown is impossible to verify against the electricity
+    invoice.
+    """
 
     sek_per_kwh: float | None = None
     quality: str = QUALITY_MISSING
     source: str = "none"
     includes_fees: bool = False
     surcharge: float = 0.0
+    spot_sek_per_kwh: float | None = None
+    vat_percent: float = 0.0
 
     @property
     def available(self) -> bool:
@@ -32,6 +40,8 @@ class PriceInfo:
             "source": self.source,
             "includes_fees": self.includes_fees,
             "surcharge": self.surcharge,
+            "spot_sek_per_kwh": self.spot_sek_per_kwh,
+            "vat_percent": self.vat_percent,
         }
 
 
@@ -120,32 +130,39 @@ def resolve_price(
     sensor_price: float | None,
     all_in_price: float | None,
     surcharge: float = 0.0,
+    vat_percent: float = 0.0,
 ) -> PriceInfo:
     """Pick the most trustworthy price source.
 
-    A user entered all-in price (spot + network + tax + VAT) is preferred
-    because it produces a real cost figure. A live spot sensor is used
-    otherwise, plus the configured surcharge for the network transfer fee and
-    energy tax that a spot sensor never includes. That sum is still marked as
-    estimated: the fees are a fixed assumption, not a measurement.
+    A live sensor wins over a hand-typed all-in price: the sensor follows the
+    spot market, while a typed-in figure silently goes stale. The sensor value
+    is already normalised to SEK/kWh *including* VAT by the caller (Nordpool
+    adds the VAT when its VAT setting is on), and the surcharge for the grid
+    transfer fee and energy tax is quoted including VAT on the invoice, so the
+    two are simply added. The result is still marked estimated: the fees are a
+    fixed assumption, not a measurement.
     """
+    if sensor_price is not None and sensor_price >= 0:
+        fee = max(surcharge, 0.0)
+        return PriceInfo(
+            sek_per_kwh=round(sensor_price + fee, 4),
+            quality=QUALITY_ESTIMATED,
+            source="price_sensor",
+            includes_fees=fee > 0,
+            surcharge=fee,
+            spot_sek_per_kwh=sensor_price,
+            vat_percent=vat_percent,
+        )
     if all_in_price is not None and all_in_price > 0:
         return PriceInfo(
             sek_per_kwh=all_in_price,
             quality=QUALITY_MEASURED,
             source="all_in_price",
             includes_fees=True,
+            spot_sek_per_kwh=all_in_price,
+            vat_percent=vat_percent,
         )
-    if sensor_price is not None and sensor_price >= 0:
-        total = round(sensor_price + max(surcharge, 0.0), 4)
-        return PriceInfo(
-            sek_per_kwh=total,
-            quality=QUALITY_ESTIMATED,
-            source="price_sensor",
-            includes_fees=surcharge > 0,
-            surcharge=max(surcharge, 0.0),
-        )
-    return PriceInfo()
+    return PriceInfo(vat_percent=vat_percent)
 
 
 def estimate_cost(kwh: float, price: PriceInfo) -> float | None:

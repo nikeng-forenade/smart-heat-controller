@@ -32,12 +32,15 @@ from .const import (
     AWAY_HVAC_KEEP,
     AWAY_HVAC_OPTIONS,
     CONF_AWAY_HVAC_MODE,
+    CONF_HEATPUMP_FAN_MODE,
+    CONF_HEATPUMP_START_TARGET,
     CONF_PANEL_ENABLED,
     CONF_PRICE_CHEAP,
     CONF_PRICE_EXPENSIVE,
     CONF_PRICE_MAX_ADJUST,
     CONF_PRICE_MIN_COMFORT,
     CONF_PRICE_OPTIMIZATION,
+    CONF_PRIMARY_CLIMATE,
     DOMAIN,
     NAME,
     PANEL_COMPONENT,
@@ -436,11 +439,37 @@ def _async_register_websocket(hass: HomeAssistant) -> None:
         await coordinator.async_set_option(CONF_AWAY_HVAC_MODE, msg[ATTR_MODE])
         connection.send_result(msg["id"], {CONF_AWAY_HVAC_MODE: msg[ATTR_MODE]})
 
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/set_heatpump_profile",
+            vol.Required(ATTR_ENTRY_ID): cv.string,
+            vol.Optional("fan_mode"): vol.Any(None, cv.string),
+            vol.Optional("start_target"): vol.Any(None, vol.Coerce(float)),
+        }
+    )
+    @websocket_api.async_response
+    async def _ws_set_heatpump_profile(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+    ) -> None:
+        coordinator = _coordinator_for(hass, msg[ATTR_ENTRY_ID])
+        if coordinator is None:
+            connection.send_error(msg["id"], "not_found", "Unknown zone")
+            return
+        await coordinator.async_set_options(
+            {
+                CONF_HEATPUMP_FAN_MODE: msg.get("fan_mode"),
+                CONF_HEATPUMP_START_TARGET: msg.get("start_target"),
+            }
+        )
+        await coordinator.async_apply_heatpump_profile()
+        connection.send_result(msg["id"], {"ok": True})
+
     websocket_api.async_register_command(hass, _ws_zones)
     websocket_api.async_register_command(hass, _ws_set_schedule)
     websocket_api.async_register_command(hass, _ws_set_vacation)
     websocket_api.async_register_command(hass, _ws_set_price)
     websocket_api.async_register_command(hass, _ws_set_away_hvac_mode)
+    websocket_api.async_register_command(hass, _ws_set_heatpump_profile)
     hass.data.setdefault(DOMAIN, {})["websocket_registered"] = True
 
 
@@ -527,6 +556,10 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
         }
 
     config = coordinator.config_data
+    climate_entity = config.get(CONF_PRIMARY_CLIMATE)
+    climate_state = (
+        coordinator.hass.states.get(climate_entity) if climate_entity else None
+    )
     return {
         "entry_id": coordinator.entry.entry_id,
         "name": coordinator.zone_name,
@@ -549,6 +582,7 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
         "faults": [str(fault) for fault in data.decision.faults],
         "dry_run": data.decision.dry_run,
         "room_temperature": data.snapshot.room_temperature,
+        "outside_temperature": data.outside_temperature,
         "radiator": {
             "power_w": data.radiator.power_w,
             "kwh_today": data.radiator.kwh_today,
@@ -560,6 +594,13 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
             "kwh_today": data.heatpump.kwh_today,
             "quality": data.heatpump.quality,
             "available": data.heatpump.available,
+            "fan_mode": climate_state.attributes.get("fan_mode")
+            if climate_state
+            else None,
+            "fan_modes": list(
+                (climate_state.attributes.get("fan_modes") if climate_state else None)
+                or []
+            ),
         },
         "totals": {
             period: {
@@ -573,6 +614,9 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
             "quality": data.price.quality,
             "source": data.price.source,
             "includes_fees": data.price.includes_fees,
+            "surcharge": data.price.surcharge,
+            "spot_sek_per_kwh": data.price.spot_sek_per_kwh,
+            "vat_percent": data.price.vat_percent,
         },
         "savings": data.savings.as_dict() if data.savings else None,
         "savings_warning": data.savings_warning,
@@ -600,6 +644,8 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
             "heatpump_target": data.snapshot.heatpump_target,
             "radiator_on": data.snapshot.radiator_is_on,
             "away_hvac_mode": config.get(CONF_AWAY_HVAC_MODE, AWAY_HVAC_KEEP),
+            "heatpump_fan_mode": config.get(CONF_HEATPUMP_FAN_MODE),
+            "heatpump_start_target": config.get(CONF_HEATPUMP_START_TARGET),
         },
         "last_updated": data.last_updated.isoformat() if data.last_updated else None,
     }

@@ -132,6 +132,7 @@ export interface ZonePayload {
   faults?: string[];
   dry_run?: boolean;
   room_temperature?: number | null;
+  outside_temperature?: number | null;
   radiator?: {
     power_w: number | null;
     kwh_today: number | null;
@@ -143,6 +144,8 @@ export interface ZonePayload {
     kwh_today: number | null;
     quality: string;
     available: boolean;
+    fan_mode?: string | null;
+    fan_modes?: string[];
   };
   totals?: Record<string, Record<string, EnergyTotal>>;
   costs?: Record<string, Record<string, number | null>>;
@@ -151,6 +154,9 @@ export interface ZonePayload {
     quality: string;
     source: string;
     includes_fees: boolean;
+    surcharge?: number;
+    spot_sek_per_kwh?: number | null;
+    vat_percent?: number;
   };
   savings?: SavingsPayload | null;
   savings_warning?: string | null;
@@ -174,6 +180,8 @@ export interface ZonePayload {
     heatpump_target: number | null;
     radiator_on: boolean | null;
     away_hvac_mode: string | null;
+    heatpump_fan_mode: string | null;
+    heatpump_start_target: number | null;
   };
   last_updated?: string | null;
 }
