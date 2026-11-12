@@ -67,6 +67,7 @@
       }
     },
     "error": {
+      "away_boost_stop_not_above_start": "The away boost must stop above the temperature where it starts.",
       "entity_not_found": "The selected entity does not exist.",
       "not_an_energy_sensor": "The selected entity is not an energy sensor.",
       "unsupported_energy_unit": "Energy sensors must report Wh, kWh or MWh.",
@@ -81,6 +82,9 @@
     }
   },
   "options": {
+    "error": {
+      "away_boost_stop_not_above_start": "The away boost must stop above the temperature where it starts."
+    },
     "step": {
       "init": {
         "title": "Smart Heat Controller options",
@@ -136,7 +140,10 @@
           "fallback_radiator": "Radiator behaviour without valid temperature",
           "backup_heating": "Backup heating when the heat pump is unavailable",
           "dry_run": "Dry run (compute decisions, do not act)",
-          "away_hvac_mode": "Heat pump when nobody is home"
+          "away_hvac_mode": "Heat pump when nobody is home",
+          "away_boost": "Away boost: let the heat pump heat a cold empty house instead of the radiator",
+          "away_boost_start_below": "Away boost starts below (°C)",
+          "away_boost_stop_at": "Away boost stops at (°C)"
         }
       },
       "price": {

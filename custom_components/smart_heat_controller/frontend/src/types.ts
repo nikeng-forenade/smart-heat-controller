@@ -136,12 +136,14 @@ export interface ZonePayload {
   outside_temperature?: number | null;
   radiator?: {
     power_w: number | null;
+    power_source?: string | null;
     kwh_today: number | null;
     quality: string;
     available: boolean;
   };
   heatpump?: {
     power_w: number | null;
+    power_source?: string | null;
     kwh_today: number | null;
     quality: string;
     available: boolean;
@@ -183,7 +185,14 @@ export interface ZonePayload {
     away_hvac_mode: string | null;
     heatpump_fan_mode: string | null;
     heatpump_start_target: number | null;
+    away_boost?: boolean;
+    away_boost_start_below?: number | null;
+    away_boost_stop_at?: number | null;
+    away_boost_fan_mode?: string | null;
+    away_idle_fan_mode?: string | null;
   };
+  /** null: the away boost is not in play; true: boosting; false: low fan. */
+  away_boost?: boolean | null;
   last_updated?: string | null;
 }
 

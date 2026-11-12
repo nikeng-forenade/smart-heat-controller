@@ -67,6 +67,7 @@
       }
     },
     "error": {
+      "away_boost_stop_not_above_start": "Boosten måste sluta vid en högre temperatur än den startar vid.",
       "entity_not_found": "Den valda entiteten finns inte.",
       "not_an_energy_sensor": "Den valda entiteten är ingen energigivare.",
       "unsupported_energy_unit": "Energigivare måste rapportera Wh, kWh eller MWh.",
@@ -136,7 +137,10 @@
           "fallback_radiator": "Elementets beteende utan giltig temperatur",
           "backup_heating": "Reservvärme när värmepumpen är otillgänglig",
           "dry_run": "Torrkörning (beräkna beslut, agera inte)",
-          "away_hvac_mode": "Värmepumpen när ingen är hemma"
+          "away_hvac_mode": "Värmepumpen när ingen är hemma",
+          "away_boost": "Boost när ingen är hemma: värmepumpen värmer ett kallt tomt hus i stället för elementet",
+          "away_boost_start_below": "Boost startar under (°C)",
+          "away_boost_stop_at": "Boost slutar vid (°C)"
         }
       },
       "price": {
@@ -148,6 +152,9 @@
           "price_optimization": "Aktivera prisoptimering"
         }
       }
+    },
+    "error": {
+      "away_boost_stop_not_above_start": "Boosten måste sluta vid en högre temperatur än den startar vid."
     }
   },
   "entity": {

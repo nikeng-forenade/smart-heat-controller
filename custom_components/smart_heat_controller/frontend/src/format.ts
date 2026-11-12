@@ -39,6 +39,21 @@ const STRINGS = {
     target: "Mål",
     powerNow: "Förbrukning just nu",
     todayShort: "Idag",
+    fan: "Fläkt",
+    powerApprox: "≈ snitt senaste 30 min (från energimätaren)",
+    powerNominal: "≈ uppskattat från märkeffekten",
+    awayBoost: "Boost när ingen är hemma",
+    awayBoostHint:
+      "När ingen är hemma och rummet blir kallt värmer pumpen för fullt upp till stopptemperaturen och går sedan tillbaka till låg fläkt. Elementet hålls av – pumpen ger ungefär tre gånger mer värme per kWh.",
+    awayBoostStart: "Starta boost under",
+    awayBoostStop: "Sluta boosta vid",
+    awayBoostFan: "Fläkt under boost",
+    awayIdleFan: "Fläkt efter boost",
+    awayBoostActive: "Boostar",
+    awayBoostIdle: "Låg fläkt",
+    awayBoostStopError: "Stopptemperaturen måste vara högre än starttemperaturen.",
+    awayBoostSafety:
+      "Starttemperaturen ligger vid eller under säkerhetsgränsen – då hinner elementet slå på först.",
     systemStatus: "Systemstatus",
     online: "Online",
     offline: "Offline",
@@ -144,6 +159,21 @@ const STRINGS = {
     target: "target",
     powerNow: "Power now",
     todayShort: "Today",
+    fan: "Fan",
+    powerApprox: "≈ average over the last 30 min (from the energy meter)",
+    powerNominal: "≈ estimated from the rated power",
+    awayBoost: "Boost while nobody is home",
+    awayBoostHint:
+      "When nobody is home and the room gets cold, the pump heats at full speed up to the stop temperature and then drops back to a low fan. The radiator stays off – the pump gives roughly three times more heat per kWh.",
+    awayBoostStart: "Start boost below",
+    awayBoostStop: "Stop boosting at",
+    awayBoostFan: "Fan while boosting",
+    awayIdleFan: "Fan after the boost",
+    awayBoostActive: "Boosting",
+    awayBoostIdle: "Low fan",
+    awayBoostStopError: "The stop temperature must be above the start temperature.",
+    awayBoostSafety:
+      "The start temperature is at or below the safety limit – the radiator would switch on first.",
     systemStatus: "System status",
     online: "Online",
     offline: "Offline",
@@ -412,4 +442,29 @@ export function presenceLabel(
     default:
       return t(hass, "unknown");
   }
+}
+
+/** Friendly labels for the fan speeds Home Assistant may report. */
+const FAN_MODE_LABELS: Record<string, { sv: string; en: string }> = {
+  auto: { sv: "Auto", en: "Auto" },
+  quiet: { sv: "Tyst", en: "Quiet" },
+  low: { sv: "Låg", en: "Low" },
+  medium: { sv: "Medel", en: "Medium" },
+  medium_low: { sv: "Medel-låg", en: "Medium low" },
+  medium_high: { sv: "Medel-hög", en: "Medium high" },
+  high: { sv: "Hög", en: "High" },
+  strong: { sv: "Max", en: "Strong" },
+  "1": { sv: "1", en: "1" },
+  "2": { sv: "2", en: "2" },
+  "3": { sv: "3", en: "3" },
+  "4": { sv: "4", en: "4" },
+  "5": { sv: "5", en: "5" },
+};
+
+export function fanModeLabel(hass: HomeAssistant | undefined, mode: string): string {
+  const entry = FAN_MODE_LABELS[mode.toLowerCase()];
+  if (!entry) {
+    return mode;
+  }
+  return language(hass) === "en" ? entry.en : entry.sv;
 }

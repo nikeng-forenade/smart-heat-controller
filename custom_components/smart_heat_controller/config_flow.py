@@ -18,6 +18,9 @@ from .const import (
     CONF_ALL_IN_PRICE,
     CONF_AREA,
     CONF_ARRIVAL_CONFIRM,
+    CONF_AWAY_BOOST,
+    CONF_AWAY_BOOST_START_BELOW,
+    CONF_AWAY_BOOST_STOP_AT,
     CONF_AWAY_HVAC_MODE,
     CONF_AWAY_TARGET,
     CONF_BACKUP_HEATING,
@@ -54,6 +57,8 @@ from .const import (
     AWAY_HVAC_KEEP,
     AWAY_HVAC_OPTIONS,
     DEFAULT_ARRIVAL_CONFIRM_MINUTES,
+    DEFAULT_AWAY_BOOST_START_BELOW,
+    DEFAULT_AWAY_BOOST_STOP_AT,
     DEFAULT_AWAY_TARGET,
     DEFAULT_BOOST_DURATION_MINUTES,
     DEFAULT_HOME_TARGET,
@@ -767,8 +772,19 @@ class SmartHeatOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         current = self._merged()
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return await self._save(user_input)
+            start = float(
+                user_input.get(CONF_AWAY_BOOST_START_BELOW, DEFAULT_AWAY_BOOST_START_BELOW)
+            )
+            stop = float(
+                user_input.get(CONF_AWAY_BOOST_STOP_AT, DEFAULT_AWAY_BOOST_STOP_AT)
+            )
+            if stop <= start:
+                errors[CONF_AWAY_BOOST_STOP_AT] = "away_boost_stop_not_above_start"
+            else:
+                return await self._save(user_input)
+            current = {**current, **user_input}
 
         schema = vol.Schema(
             {
@@ -805,9 +821,26 @@ class SmartHeatOptionsFlow(OptionsFlow):
                         translation_key="away_hvac_mode",
                     )
                 ),
+                vol.Required(
+                    CONF_AWAY_BOOST, default=current.get(CONF_AWAY_BOOST, False)
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_AWAY_BOOST_START_BELOW,
+                    default=current.get(
+                        CONF_AWAY_BOOST_START_BELOW, DEFAULT_AWAY_BOOST_START_BELOW
+                    ),
+                ): TEMP_SELECTOR,
+                vol.Required(
+                    CONF_AWAY_BOOST_STOP_AT,
+                    default=current.get(
+                        CONF_AWAY_BOOST_STOP_AT, DEFAULT_AWAY_BOOST_STOP_AT
+                    ),
+                ): TEMP_SELECTOR,
             }
         )
-        return self.async_show_form(step_id="safety", data_schema=schema)
+        return self.async_show_form(
+            step_id="safety", data_schema=schema, errors=errors
+        )
 
     async def async_step_price(
         self, user_input: dict[str, Any] | None = None

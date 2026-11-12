@@ -136,6 +136,45 @@ services → Smart Heat Controller → Configure → Safety), the panel's settin
 drawer under **Temperaturer**, and the
 `smart_heat_controller/set_away_hvac_mode` WebSocket command.
 
+## Away boost
+
+`away_boost` (off by default) lets the heat pump, not the 800 W radiator, warm
+a cold empty house. It only applies while the zone is away, and while it is
+enabled it replaces the `away_hvac_mode` handling.
+
+| Phase | When | Pump |
+|---|---|---|
+| Boost | room < `away_boost_start_below` (17 °C) | switched to `heat` if needed, fan `away_boost_fan_mode` (`auto`), setpoint `away_boost_stop_at` + 1 °C |
+| Idle | room ≥ `away_boost_stop_at` (18 °C), until it drops below start again | stays in `heat`, fan `away_idle_fan_mode` (`1`), setpoint the away target |
+
+The setpoint is one degree above the stop temperature because the unit's own
+sensor sits high on the wall and reads warmer than the room sensor. An idle pump
+that is off or on fan is not switched on until the room is actually cold, and
+the start-up profile is not applied when the boost starts the pump. The
+radiator stays off throughout; only the minimum safety temperature can still
+switch it on, so keep the start temperature above it.
+
+The fan speed the boost replaced is remembered and given back when somebody
+comes home (or the boost is switched off), unless the start-up profile names a
+fan speed, which then wins. Fan speeds the unit does not list are never sent.
+
+Settings: options flow (**Configure → Safety**), the panel's **Värmepump**
+section, and `smart_heat_controller/set_away_boost`. The zone payload carries
+`away_boost`: `null` (not in play), `true` (boosting) or `false` (low fan).
+
+## Dashboard power
+
+The cards show `power_w` from the zone payload with a `power_source`:
+
+| Source | Meaning |
+|---|---|
+| `sensor` | the configured W sensor |
+| `energy_average` | no W sensor: the kWh meter's average over the last 30 minutes (MELCloud has no W sensor) |
+| `nominal` | no usable reading: plug state × rated power |
+
+Approximations are shown with `≈`. They are for display only — the power
+sensor entities and the power anomaly check still use measured values only.
+
 ## Heat pump start-up profile
 
 When the controller itself switches the pump into heating — coming home after

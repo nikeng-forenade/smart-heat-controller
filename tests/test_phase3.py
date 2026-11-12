@@ -993,3 +993,240 @@ async def test_setup_survives_missing_frontend(
 
     assert mock_entry.state.name == "LOADED"
     assert hass.data[DOMAIN].get("panel_registered") is not True
+
+
+# ---------------------------------------------------------------------------
+# Away boost
+# ---------------------------------------------------------------------------
+
+
+def _set_pump_fan(
+    hass: HomeAssistant, hvac_mode: str, fan_mode: str, target: float = 18.0
+) -> None:
+    hass.states.async_set(
+        PUMP,
+        hvac_mode,
+        {
+            "current_temperature": 20.0,
+            "temperature": target,
+            "fan_mode": fan_mode,
+            "fan_modes": ["auto", "1", "2", "3", "4", "5"],
+        },
+    )
+
+
+def _record_climate(hass: HomeAssistant) -> list[tuple[str, dict]]:
+    calls: list[tuple[str, dict]] = []
+
+    def _record(call) -> None:
+        calls.append((call.service, dict(call.data)))
+
+    for service in ("set_hvac_mode", "set_fan_mode", "set_temperature"):
+        hass.services.async_register("climate", service, _record)
+    return calls
+
+
+async def test_away_boost_heats_with_the_pump_then_drops_to_fan_1(
+    hass: HomeAssistant, loaded
+) -> None:
+    """Saga is out and the room is cold: the pump boosts, the radiator stays off."""
+    calls = _record_climate(hass)
+    radiator: list[str] = []
+    hass.services.async_register(
+        "switch", "turn_on", lambda call: radiator.append("on")
+    )
+    hass.config_entries.async_update_entry(
+        loaded,
+        options={
+            **loaded.options,
+            # The boost replaces the plain away mode while it is enabled.
+            "away_hvac_mode": "fan_only",
+            "away_boost": True,
+            "away_boost_start_below": 17.0,
+            "away_boost_stop_at": 18.0,
+            # The start-up profile must not interfere with the boost.
+            "heatpump_fan_mode": "2",
+            "heatpump_start_target": 23.0,
+        },
+    )
+    _set_pump_fan(hass, "fan_only", "3")
+    _set_room(hass, "16.5")
+    await _set_mode(hass, "away")
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.data.decision.away_boost is True
+    assert [(s, d.get("hvac_mode")) for s, d in calls] == [("set_hvac_mode", "heat")]
+
+    # The unit reports heating: fan auto and a setpoint above the stop temperature.
+    calls.clear()
+    _set_pump_fan(hass, "heat", "3")
+    await _refresh(hass, loaded)
+    services = dict(calls)
+    assert services["set_fan_mode"]["fan_mode"] == "auto"
+    assert services["set_temperature"]["temperature"] == pytest.approx(19.0)
+    assert "set_hvac_mode" not in services
+    assert radiator == []
+    assert coordinator.zone_state.away_fan_restore == "3"
+
+    # Warm enough: back to fan 1, still heating towards the away target.
+    calls.clear()
+    # The unit now runs on the boost setpoint, as a real pump would report.
+    _set_pump_fan(hass, "heat", "auto", target=19.0)
+    _set_room(hass, "18.1")
+    await _refresh(hass, loaded)
+    services = dict(calls)
+    assert coordinator.data.decision.away_boost is False
+    assert services["set_fan_mode"]["fan_mode"] == "1"
+    assert services["set_temperature"]["temperature"] == pytest.approx(18.0)
+    assert "set_hvac_mode" not in services
+
+    # Home again: the start-up profile's fan speed comes back.
+    calls.clear()
+    _set_pump_fan(hass, "heat", "1")
+    await _set_mode(hass, "home")
+    await _refresh(hass, loaded)
+    fans = [data["fan_mode"] for service, data in calls if service == "set_fan_mode"]
+    assert fans[:1] == ["2"]
+    assert coordinator.zone_state.away_fan_restore is None
+
+
+async def test_away_boost_leaves_an_idle_pump_alone_when_warm(
+    hass: HomeAssistant, loaded
+) -> None:
+    """No boost needed: a pump on fan is not switched into heating."""
+    calls = _record_climate(hass)
+    hass.config_entries.async_update_entry(
+        loaded, options={**loaded.options, "away_boost": True}
+    )
+    _set_pump_fan(hass, "fan_only", "3")
+    _set_room(hass, "19.0")
+    await _set_mode(hass, "away")
+    await _refresh(hass, loaded)
+
+    assert [s for s, _ in calls if s != "set_temperature"] == []
+
+
+async def test_away_boost_disabled_keeps_the_old_behaviour(
+    hass: HomeAssistant, loaded
+) -> None:
+    calls = _record_climate(hass)
+    _set_pump_fan(hass, "heat", "3")
+    _set_room(hass, "16.5")
+    await _set_mode(hass, "away")
+    coordinator = await _refresh(hass, loaded)
+
+    assert coordinator.data.decision.away_boost is None
+    assert [s for s, _ in calls if s != "set_temperature"] == []
+
+
+async def test_ws_set_away_boost(hass: HomeAssistant, loaded, hass_ws_client) -> None:
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 20,
+            "type": f"{DOMAIN}/set_away_boost",
+            "entry_id": loaded.entry_id,
+            "enabled": True,
+            "start_below": 16.5,
+            "stop_at": 19.0,
+            "boost_fan_mode": "5",
+            "idle_fan_mode": "1",
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    await hass.async_block_till_done()
+
+    assert loaded.options["away_boost"] is True
+    assert loaded.options["away_boost_start_below"] == pytest.approx(16.5)
+    assert loaded.options["away_boost_stop_at"] == pytest.approx(19.0)
+    assert loaded.options["away_boost_fan_mode"] == "5"
+
+    await client.send_json({"id": 21, "type": f"{DOMAIN}/zones"})
+    response = await client.receive_json()
+    settings = response["result"]["zones"][0]["settings"]
+    assert settings["away_boost"] is True
+    assert settings["away_idle_fan_mode"] == "1"
+
+    # Switching it off keeps the thresholds for next time.
+    await client.send_json(
+        {
+            "id": 22,
+            "type": f"{DOMAIN}/set_away_boost",
+            "entry_id": loaded.entry_id,
+            "enabled": False,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    await hass.async_block_till_done()
+    assert loaded.options["away_boost"] is False
+    assert loaded.options["away_boost_stop_at"] == pytest.approx(19.0)
+
+
+async def test_ws_set_away_boost_rejects_stop_below_start(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 23,
+            "type": f"{DOMAIN}/set_away_boost",
+            "entry_id": loaded.entry_id,
+            "enabled": True,
+            "start_below": 18.0,
+            "stop_at": 17.0,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is False
+    assert loaded.options.get("away_boost") is None
+
+
+# ---------------------------------------------------------------------------
+# Dashboard power and fan
+# ---------------------------------------------------------------------------
+
+
+async def _zone(hass: HomeAssistant, hass_ws_client) -> dict:
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 30, "type": f"{DOMAIN}/zones"})
+    response = await client.receive_json()
+    return response["result"]["zones"][0]
+
+
+async def test_dashboard_power_comes_from_the_sensor(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    _set_radiator_power(hass, "700")
+    await _refresh(hass, loaded)
+    zone = await _zone(hass, hass_ws_client)
+    assert zone["radiator"]["power_w"] == pytest.approx(700)
+    assert zone["radiator"]["power_source"] == "sensor"
+
+
+async def test_dashboard_power_falls_back_to_the_rated_power(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    """No usable W reading: plug state times 800 W, marked as an estimate."""
+    hass.states.async_set("sensor.shelly_power", "unavailable")
+    hass.states.async_set("switch.shelly", "on")
+    await _refresh(hass, loaded)
+    zone = await _zone(hass, hass_ws_client)
+    assert zone["radiator"]["power_w"] == pytest.approx(800)
+    assert zone["radiator"]["power_source"] == "nominal"
+
+    # The measured power entity must never report the estimate.
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    assert coordinator.data.radiator.power_w is None
+
+
+async def test_dashboard_shows_the_pump_fan_speed(
+    hass: HomeAssistant, loaded, hass_ws_client
+) -> None:
+    _set_pump_fan(hass, "heat", "3")
+    await _refresh(hass, loaded)
+    zone = await _zone(hass, hass_ws_client)
+    assert zone["heatpump"]["fan_mode"] == "3"
+    # No W sensor and not enough meter history yet: nothing is invented.
+    assert zone["heatpump"]["power_w"] is None

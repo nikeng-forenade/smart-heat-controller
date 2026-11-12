@@ -34,7 +34,17 @@ from .const import (
     CONF_ABSENCE_DELAY,
     CONF_ALL_IN_PRICE,
     CONF_ARRIVAL_CONFIRM,
+    CONF_AWAY_BOOST,
+    CONF_AWAY_BOOST_FAN_MODE,
+    CONF_AWAY_BOOST_START_BELOW,
+    CONF_AWAY_BOOST_STOP_AT,
     CONF_AWAY_HVAC_MODE,
+    CONF_AWAY_IDLE_FAN_MODE,
+    DEFAULT_AWAY_BOOST_FAN_MODE,
+    DEFAULT_AWAY_BOOST_START_BELOW,
+    DEFAULT_AWAY_BOOST_STOP_AT,
+    DEFAULT_AWAY_IDLE_FAN_MODE,
+    DEFAULT_NOMINAL_POWER,
     CONF_AWAY_TARGET,
     CONF_BACKUP_HEATING,
     CONF_BOOST_DURATION,
@@ -108,6 +118,7 @@ from .energy import (
     CounterTracker,
     EnergyLedger,
     EnergyTotal,
+    PowerFromEnergy,
     PowerIntegrator,
     period_month,
     period_today,
@@ -158,6 +169,13 @@ class SourceSnapshot:
     kwh_today: float | None = None
     quality: str = QUALITY_MISSING
     available: bool = False
+    # What the dashboard shows. Equals power_w when a W sensor exists; otherwise
+    # an approximation. Never used for entities or anomaly detection.
+    display_power_w: float | None = None
+    # Where display_power_w came from: "sensor" (a W sensor), "energy_average"
+    # (the kWh meter averaged over the last half hour) or "nominal" (switch
+    # state times the rated power). None when no value could be produced.
+    power_source: str | None = None
 
 
 @dataclass(slots=True)
@@ -203,6 +221,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         self._heatpump_counter = CounterTracker(max_gap=timedelta(hours=2))
         self._radiator_integrator = PowerIntegrator()
         self._heatpump_integrator = PowerIntegrator()
+        self._radiator_rate = PowerFromEnergy()
+        self._heatpump_rate = PowerFromEnergy()
         self._unsubscribers: list[Any] = []
         self._applying = False
         self._last_presence_raw = Presence.UNKNOWN
@@ -214,6 +234,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         self._schedule_target: float | None = None
         self._last_radiator_command_at: datetime | None = None
         self._last_hvac_command: tuple[str, datetime] | None = None
+        self._last_away_fan_command: tuple[str, datetime] | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -249,6 +270,13 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
                 str(conf.get(CONF_BACKUP_HEATING, BackupHeating.NONE.value))
             ),
             dry_run=bool(conf.get(CONF_DRY_RUN, False)),
+            away_boost=bool(conf.get(CONF_AWAY_BOOST, False)),
+            away_boost_start_below=float(
+                conf.get(CONF_AWAY_BOOST_START_BELOW, DEFAULT_AWAY_BOOST_START_BELOW)
+            ),
+            away_boost_stop_at=float(
+                conf.get(CONF_AWAY_BOOST_STOP_AT, DEFAULT_AWAY_BOOST_STOP_AT)
+            ),
         )
 
     @property
@@ -675,7 +703,13 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return
         self._applying = True
         try:
-            started = await self._apply_away_hvac_mode(decision)
+            if decision.away_boost is not None:
+                # The away boost owns the pump while the zone is away; it
+                # replaces the plain away HVAC mode handling.
+                started = await self._apply_away_boost(decision)
+            else:
+                await self._restore_away_fan()
+                started = await self._apply_away_hvac_mode(decision)
             if not started:
                 await self._apply_heatpump(decision, snapshot)
             await self._apply_radiator(decision, snapshot)
@@ -725,7 +759,81 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return await self._set_hvac_mode(entity_id, str(HVACMode.HEAT))
         return False
 
-    async def _set_hvac_mode(self, entity_id: str, hvac_mode: str) -> bool:
+    async def _apply_away_boost(self, decision: Decision) -> bool:
+        """Run the pump hard while the empty zone is cold, gently otherwise.
+
+        Boosting: switch the pump into heating if it is not, fan on the boost
+        speed (auto). Idle: a pump that is heating gets the idle fan speed (1);
+        an idle pump that is off or on fan is left alone, it only gets started
+        when the room is actually cold.
+
+        Returns True when the pump was started this cycle, so the caller leaves
+        the setpoint for the next cycle once the unit reports heating.
+        """
+        entity_id = self.config_data.get(CONF_PRIMARY_CLIMATE)
+        if not entity_id:
+            return False
+        state = self._climate_state()
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return False
+
+        conf = self.config_data
+        if decision.away_boost:
+            if state.state not in HEATING_HVAC_MODES:
+                started = await self._set_hvac_mode(
+                    entity_id, str(HVACMode.HEAT), start_profile=False
+                )
+                if started:
+                    # Make sure the boost setpoint is sent once the unit heats.
+                    self._state.heatpump_target_command = None
+                return started
+            fan_mode = conf.get(CONF_AWAY_BOOST_FAN_MODE, DEFAULT_AWAY_BOOST_FAN_MODE)
+        else:
+            if state.state not in HEATING_HVAC_MODES:
+                return False
+            fan_mode = conf.get(CONF_AWAY_IDLE_FAN_MODE, DEFAULT_AWAY_IDLE_FAN_MODE)
+
+        if fan_mode:
+            await self._set_away_fan(entity_id, str(fan_mode), state)
+        return False
+
+    async def _set_away_fan(self, entity_id: str, fan_mode: str, state) -> None:
+        """Set a fan speed for the away boost, remembering the one it replaces."""
+        current = state.attributes.get("fan_mode")
+        if current == fan_mode:
+            return
+        now = dt_util.now()
+        last = self._last_away_fan_command
+        if last is not None and last[0] == fan_mode and now - last[1] < COMMAND_SETTLE:
+            # MELCloud reports the new speed with a delay; do not resend it on
+            # every tick while it catches up.
+            return
+        self._last_away_fan_command = (fan_mode, now)
+        if await self._set_fan_mode(entity_id, fan_mode) and (
+            self._state.away_fan_restore is None and current
+        ):
+            self._state.away_fan_restore = str(current)
+
+    async def _restore_away_fan(self) -> None:
+        """Give the fan back once the away boost no longer owns the pump.
+
+        The start-up profile's fan speed wins when one is configured, otherwise
+        the speed the pump had before the boost changed it.
+        """
+        previous = self._state.away_fan_restore
+        if previous is None:
+            return
+        self._state.away_fan_restore = None
+        entity_id = self.config_data.get(CONF_PRIMARY_CLIMATE)
+        state = self._climate_state()
+        if not entity_id or state is None or state.state not in HEATING_HVAC_MODES:
+            return
+        fan_mode = self.config_data.get(CONF_HEATPUMP_FAN_MODE) or previous
+        await self._set_fan_mode(entity_id, str(fan_mode))
+
+    async def _set_hvac_mode(
+        self, entity_id: str, hvac_mode: str, *, start_profile: bool = True
+    ) -> bool:
         """Send an HVAC mode command; True when the pump was switched to heat."""
         now = dt_util.now()
         if (
@@ -754,7 +862,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             return False
         if hvac_mode != str(HVACMode.HEAT):
             return False
-        await self._apply_start_profile(entity_id)
+        if start_profile:
+            await self._apply_start_profile(entity_id)
         return True
 
     async def _apply_start_profile(self, entity_id: str) -> None:
@@ -944,6 +1053,10 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
                     )
                 except (TypeError, ValueError):
                     value = None
+            rate = (
+                self._heatpump_rate if source == SOURCE_HEATPUMP else self._radiator_rate
+            )
+            rate.update(now, value)
             update = counter.update(now, value)
             if update.delta_kwh is not None:
                 self._ledger.add(source, today, update.delta_kwh, gap=False)
@@ -972,9 +1085,13 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         energy_entity: str | None,
         today: date,
         *,
+        now: datetime,
         actuator_available: bool = True,
+        nominal_w: float | None = None,
     ) -> SourceSnapshot:
         power: float | None = None
+        display: float | None = None
+        power_source: str | None = None
         if power_entity:
             state = self.hass.states.get(power_entity)
             if state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
@@ -984,6 +1101,22 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
                         power *= 1000.0
                 except (TypeError, ValueError):
                     power = None
+            if power is not None:
+                display = power
+                power_source = "sensor"
+
+        if display is None and energy_entity:
+            rate = (
+                self._heatpump_rate if source == SOURCE_HEATPUMP else self._radiator_rate
+            )
+            average = rate.watts(now)
+            if average is not None:
+                display = float(round(average))
+                power_source = "energy_average"
+
+        if display is None and nominal_w is not None and actuator_available:
+            display = nominal_w
+            power_source = "nominal"
 
         bucket = self._ledger.bucket(source, today)
         available = bool(energy_entity or power_entity) and actuator_available
@@ -999,6 +1132,8 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             kwh_today=bucket.kwh if bucket else None,
             quality=quality,
             available=available,
+            display_power_w=display,
+            power_source=power_source,
         )
 
     # ------------------------------------------------------------------
@@ -1019,7 +1154,15 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             conf.get(CONF_SUPPLEMENTARY_POWER_SENSOR),
             conf.get(CONF_SUPPLEMENTARY_ENERGY_SENSOR),
             today,
+            now=now,
             actuator_available=self._radiator_available(),
+            nominal_w=(
+                float(conf.get(CONF_SUPPLEMENTARY_NOMINAL_POWER, DEFAULT_NOMINAL_POWER))
+                if snapshot.radiator_is_on
+                else 0.0
+            )
+            if conf.get(CONF_SUPPLEMENTARY_SWITCHES)
+            else None,
         )
         climate_state = self._climate_state()
         heatpump_snapshot = self._source_snapshot(
@@ -1027,6 +1170,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             conf.get(CONF_HEATPUMP_POWER_SENSOR),
             conf.get(CONF_HEATPUMP_ENERGY_SENSOR),
             today,
+            now=now,
             actuator_available=(
                 climate_state is not None
                 and climate_state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)

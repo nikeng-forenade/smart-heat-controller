@@ -117,6 +117,17 @@ the air/air unit at the moment the controller switches it into heating (for
 example when everybody comes home again). The normal control loop takes over on
 the following cycle, and a fan speed the unit does not advertise is never sent.
 
+**Boost när ingen är hemma** (also under **Värmepump**, off by default): while
+nobody is home and the room drops below the start temperature (17 °C), the heat
+pump heats with fan auto up to the stop temperature (18 °C), then stays in
+heating on fan 1. The radiator stays off, so the cheaper heat source does the
+work. Temperatures and both fan speeds are adjustable, and the whole feature is
+one switch.
+
+The heat pump and radiator cards show the fan speed and the power right now.
+Without a W sensor the value is approximated (marked `≈`): the heat pump from
+its energy meter over the last 30 minutes, the radiator from its rated power.
+
 ### Building the card after changing the frontend
 
 ```bash
@@ -154,6 +165,7 @@ Away), which keeps the automation and the manual controls consistent.
 | `smart_heat_controller/set_price` | Update price optimisation settings |
 | `smart_heat_controller/set_away_hvac_mode` | Choose what the heat pump does while the zone is away |
 | `smart_heat_controller/set_heatpump_profile` | Fan speed and start temperature used when the pump is started |
+| `smart_heat_controller/set_away_boost` | Away boost on/off, start/stop temperature and fan speeds |
 
 ### Services
 
