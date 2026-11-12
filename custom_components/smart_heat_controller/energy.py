@@ -179,6 +179,43 @@ class PowerIntegrator:
         )
 
 
+@dataclass(slots=True)
+class PowerFromEnergy:
+    """Average power derived from a cumulative energy meter.
+
+    Used for display only, when a load has a kWh meter but no W sensor (the
+    MELCloud heat pump is the typical case). The meter moves in coarse steps,
+    so the value is the average over ``window`` rather than an instant reading,
+    and it is always labelled approximate.
+    """
+
+    window: timedelta = timedelta(minutes=30)
+    min_span: timedelta = timedelta(minutes=5)
+    samples: list[tuple[datetime, float]] = field(default_factory=list)
+
+    def update(self, now: datetime, kwh: float | None) -> None:
+        if kwh is None:
+            return
+        if self.samples and kwh < self.samples[-1][1]:
+            # Counter reset: earlier readings no longer describe this counter.
+            self.samples.clear()
+        self.samples.append((now, kwh))
+        cutoff = now - self.window
+        # Keep the newest sample at or before the window start as the anchor.
+        while len(self.samples) > 1 and self.samples[1][0] <= cutoff:
+            self.samples.pop(0)
+
+    def watts(self, now: datetime) -> float | None:
+        if not self.samples:
+            return None
+        first_time, first_kwh = self.samples[0]
+        span = (now - first_time).total_seconds()
+        if span < self.min_span.total_seconds():
+            return None
+        delta = self.samples[-1][1] - first_kwh
+        return max(0.0, delta * 3_600_000.0 / span)
+
+
 # ---------------------------------------------------------------------------
 # Ledger
 # ---------------------------------------------------------------------------

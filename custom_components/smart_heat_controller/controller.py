@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 
-from .const import MAX_TARGET_TEMP
+from .const import AWAY_BOOST_MARGIN, MAX_TARGET_TEMP
 
 
 class Mode(StrEnum):
@@ -91,6 +91,13 @@ class ZoneConfig:
     unknown_presence: UnknownPresenceBehaviour = UnknownPresenceBehaviour.KEEP_LAST
     backup_heating: BackupHeating = BackupHeating.NONE
     dry_run: bool = False
+    # Away boost: while nobody is home the heat pump heats hard (fan auto) when
+    # the room drops below ``away_boost_start_below`` and calms down again (fan
+    # 1) once it reaches ``away_boost_stop_at``. The pump carries the load so
+    # the 800 W radiator does not have to.
+    away_boost: bool = False
+    away_boost_start_below: float = 17.0
+    away_boost_stop_at: float = 18.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +142,11 @@ class ZoneState:
     # HVAC mode the controller applied while away, so it can be undone when
     # somebody comes home. None means the controller changed nothing.
     heatpump_hvac_applied: str | None = None
+    # True while an away boost is running (between start and stop temperature).
+    away_boost_active: bool = False
+    # Fan speed the pump had before the away boost touched it, restored when
+    # somebody comes home. None means the fan was never changed.
+    away_fan_restore: str | None = None
     last_effective_mode: Mode = Mode.HOME
     override_until: datetime | None = None
     override_previous_mode: Mode | None = None
@@ -153,6 +165,8 @@ class ZoneState:
             "radiator_manual": self.radiator_manual,
             "heatpump_target_command": self.heatpump_target_command,
             "heatpump_hvac_applied": self.heatpump_hvac_applied,
+            "away_boost_active": self.away_boost_active,
+            "away_fan_restore": self.away_fan_restore,
             "last_effective_mode": str(self.last_effective_mode),
             "override_until": _iso(self.override_until),
             "override_previous_mode": (
@@ -179,6 +193,12 @@ class ZoneState:
             heatpump_hvac_applied=(
                 str(data["heatpump_hvac_applied"])
                 if data.get("heatpump_hvac_applied")
+                else None
+            ),
+            away_boost_active=bool(data.get("away_boost_active", False)),
+            away_fan_restore=(
+                str(data["away_fan_restore"])
+                if data.get("away_fan_restore")
                 else None
             ),
             last_effective_mode=Mode(
@@ -237,6 +257,9 @@ class Decision:
     reason: str = ""
     faults: tuple[Fault, ...] = ()
     dry_run: bool = False
+    # None: the away boost is not in play (disabled, or the zone is not away).
+    # True: boost the pump (heat, fan auto). False: idle (heat, fan 1).
+    away_boost: bool | None = None
 
     @property
     def radiator_command_changed(self) -> bool:
@@ -478,6 +501,8 @@ def evaluate(
         and Fault.TEMPERATURE_MISSING not in faults
     )
 
+    away_boost = update_away_boost(config, state, mode, temperature if temperature_usable else None)
+
     heatpump_target = _evaluate_heatpump(
         config, snapshot, state, mode, temperature_usable, faults
     )
@@ -495,9 +520,44 @@ def evaluate(
             reason=reason,
             faults=tuple(faults),
             dry_run=config.dry_run,
+            away_boost=away_boost,
         ),
         state,
     )
+
+
+def update_away_boost(
+    config: ZoneConfig,
+    state: ZoneState,
+    mode: Mode,
+    temperature: float | None,
+) -> bool | None:
+    """Advance the away boost hysteresis and return whether it is boosting.
+
+    Returns None when the feature is off or the zone is not away. Without a
+    usable room temperature the current phase is kept, so a sensor hiccup never
+    starts or stops the boost on its own.
+    """
+    if not config.away_boost or mode is not Mode.AWAY:
+        state.away_boost_active = False
+        return None
+
+    if temperature is not None:
+        if temperature < config.away_boost_start_below:
+            state.away_boost_active = True
+        elif temperature >= config.away_boost_stop_at:
+            state.away_boost_active = False
+    return state.away_boost_active
+
+
+def away_boost_target(config: ZoneConfig) -> float:
+    """Setpoint sent to the pump while boosting.
+
+    One degree above the stop temperature: the pump's own sensor sits high on
+    the wall and reads warmer than the room, so asking for exactly the stop
+    temperature would let it throttle before the room sensor gets there.
+    """
+    return min(config.away_boost_stop_at + AWAY_BOOST_MARGIN, MAX_TARGET_TEMP)
 
 
 def _evaluate_heatpump(
@@ -523,6 +583,8 @@ def _evaluate_heatpump(
         return None
 
     target = effective_target(config, snapshot, mode)
+    if mode is Mode.AWAY and state.away_boost_active:
+        target = away_boost_target(config)
 
     previous = state.heatpump_target_command
     if previous is not None and abs(previous - target) < 0.05:

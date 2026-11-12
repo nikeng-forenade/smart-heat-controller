@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "smart_heat_controller"
 NAME: Final = "Smart Heat Controller"
-VERSION: Final = "0.1.12"
+VERSION: Final = "0.1.13"
 
 PLATFORMS: Final = (
     "binary_sensor",
@@ -47,6 +47,9 @@ DEFAULT_ECO_OFFSET: Final = -1.0
 
 MIN_TARGET_TEMP: Final = 5.0
 MAX_TARGET_TEMP: Final = 30.0
+# The away boost asks the pump for this much above its stop temperature, so the
+# unit's own (warmer) sensor does not throttle it before the room gets there.
+AWAY_BOOST_MARGIN: Final = 1.0
 MIN_TEMPERATURE_STEP: Final = 0.1
 
 # --- Configuration keys ----------------------------------------------------
@@ -97,6 +100,19 @@ CONF_AWAY_HVAC_MODE: Final = "away_hvac_mode"
 # normal control loop takes over on the following cycle.
 CONF_HEATPUMP_FAN_MODE: Final = "heatpump_fan_mode"
 CONF_HEATPUMP_START_TARGET: Final = "heatpump_start_target"
+
+# Away boost: while nobody is home and the room is cold, the heat pump heats
+# hard (fan auto) up to the stop temperature, then idles on a low fan. The
+# radiator stays off, so the cheap heat source carries the load.
+CONF_AWAY_BOOST: Final = "away_boost"
+CONF_AWAY_BOOST_START_BELOW: Final = "away_boost_start_below"
+CONF_AWAY_BOOST_STOP_AT: Final = "away_boost_stop_at"
+CONF_AWAY_BOOST_FAN_MODE: Final = "away_boost_fan_mode"
+CONF_AWAY_IDLE_FAN_MODE: Final = "away_idle_fan_mode"
+DEFAULT_AWAY_BOOST_START_BELOW: Final = 17.0
+DEFAULT_AWAY_BOOST_STOP_AT: Final = 18.0
+DEFAULT_AWAY_BOOST_FAN_MODE: Final = "auto"
+DEFAULT_AWAY_IDLE_FAN_MODE: Final = "1"
 CONF_VACATION_START: Final = "vacation_start"
 CONF_VACATION_END: Final = "vacation_end"
 CONF_PANEL_ENABLED: Final = "panel_enabled"

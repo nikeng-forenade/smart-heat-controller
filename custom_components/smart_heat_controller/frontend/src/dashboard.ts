@@ -5,6 +5,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import "./energy-chart";
 import "./settings-drawer";
 import {
+  fanModeLabel,
   formatCurrency,
   formatNumber,
   formatTime,
@@ -781,6 +782,11 @@ export class SmartHeatDashboard extends LitElement {
                 <strong>${t(this.hass, "heatpump")}</strong>
                 <span class="sub ${heatpumpOn ? "" : "off"}">
                   ${heatpumpOn ? t(this.hass, "heating") : t(this.hass, "idle")}
+                  ${zone.away_boost === true
+                    ? html` · <strong>${t(this.hass, "awayBoostActive")}</strong>`
+                    : zone.away_boost === false
+                      ? html` · ${t(this.hass, "awayBoostIdle")}`
+                      : nothing}
                 </span>
               </div>
             </div>
@@ -789,12 +795,17 @@ export class SmartHeatDashboard extends LitElement {
               <span class="muted">(${t(this.hass, "target")})</span>
             </div>
             <div class="spread" style="margin-top:8px">
-              <span class="muted">${t(this.hass, "powerNow")}</span>
+              <span class="muted">${t(this.hass, "fan")}</span>
               <strong
-                >${zone.heatpump?.power_w != null
-                  ? `${formatNumber(this.hass, zone.heatpump.power_w, 0)} W`
+                >${zone.heatpump?.fan_mode
+                  ? fanModeLabel(this.hass, zone.heatpump.fan_mode)
                   : "–"}</strong
               >
+            </div>
+            ${this.powerRow(zone.heatpump?.power_w, zone.heatpump?.power_source)}
+            <div class="spread" style="margin-top:6px">
+              <span class="muted">${t(this.hass, "todayShort")}</span>
+              <strong>${formatNumber(this.hass, zone.heatpump?.kwh_today, 2)} kWh</strong>
             </div>
           </div>
 
@@ -808,14 +819,7 @@ export class SmartHeatDashboard extends LitElement {
                 </span>
               </div>
             </div>
-            <div class="spread" style="margin-top:10px">
-              <span class="muted">${t(this.hass, "powerNow")}</span>
-              <strong
-                >${zone.radiator?.power_w != null
-                  ? `${formatNumber(this.hass, zone.radiator.power_w, 0)} W`
-                  : "–"}</strong
-              >
-            </div>
+            ${this.powerRow(zone.radiator?.power_w, zone.radiator?.power_source)}
             <div class="spread" style="margin-top:6px">
               <span class="muted">${t(this.hass, "todayShort")}</span>
               <strong>${formatNumber(this.hass, zone.radiator?.kwh_today, 2)} kWh</strong>
@@ -1208,6 +1212,27 @@ export class SmartHeatDashboard extends LitElement {
     return switches.some(
       (entityId) => this.hass?.states[entityId]?.state === "on",
     );
+  }
+
+  /** "Power now" row; approximations are marked with ≈ and explained. */
+  private powerRow(watts: number | null | undefined, source: string | null | undefined) {
+    const approx = source === "energy_average" || source === "nominal";
+    return html`
+      <div
+        class="spread"
+        style="margin-top:6px"
+        title=${approx
+          ? t(this.hass, source === "nominal" ? "powerNominal" : "powerApprox")
+          : ""}
+      >
+        <span class="muted">${t(this.hass, "powerNow")}</span>
+        <strong
+          >${watts != null
+            ? `${approx ? "≈ " : ""}${formatNumber(this.hass, watts, 0)} W`
+            : "–"}</strong
+        >
+      </div>
+    `;
   }
 }
 

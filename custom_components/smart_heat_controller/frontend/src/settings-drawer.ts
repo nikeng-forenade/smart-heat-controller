@@ -2,7 +2,15 @@
 
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { formatNumber, formatTime, language, modeLabel, presenceLabel, reasonLabel, t } from "./format";
+import {
+  fanModeLabel,
+  formatNumber,
+  formatTime,
+  modeLabel,
+  presenceLabel,
+  reasonLabel,
+  t,
+} from "./format";
 import type { StringKey } from "./format";
 import { stepper } from "./stepper";
 import { sharedStyles } from "./styles";
@@ -154,6 +162,17 @@ export class ShcSettingsDrawer extends LitElement {
         color: var(--shc-muted);
         font-size: 12px;
         margin: 8px 0 0;
+      }
+
+      .hint.warn {
+        color: var(--warning-color, #b45309);
+      }
+
+      .subhead {
+        margin: 20px 0 4px;
+        padding-top: 12px;
+        border-top: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+        font-size: 14px;
       }
 
       .actions {
@@ -874,7 +893,121 @@ export class ShcSettingsDrawer extends LitElement {
             </button>`}
       </p>
       <p class="hint">${t(this.hass, "startTargetHint")}</p>
+
+      ${this.renderAwayBoost()}
     `;
+  }
+
+  private renderAwayBoost() {
+    const settings = this.zone?.settings;
+    const enabled = settings?.away_boost ?? false;
+    const start = settings?.away_boost_start_below ?? 17;
+    const stop = settings?.away_boost_stop_at ?? 18;
+    const boostFan = settings?.away_boost_fan_mode ?? "auto";
+    const idleFan = settings?.away_idle_fan_mode ?? "1";
+    const safety = settings?.min_safety_temp ?? null;
+    const fanModes = (this.zone?.heatpump?.fan_modes ?? []).filter((mode) => mode);
+    const busy = this.pending.has("away_boost");
+    const save = (patch: Partial<AwayBoostPayload>): void => {
+      void this.saveAwayBoost({
+        enabled,
+        start_below: start,
+        stop_at: stop,
+        boost_fan_mode: boostFan,
+        idle_fan_mode: idleFan,
+        ...patch,
+      });
+    };
+    const fanSelect = (value: string, onChange: (mode: string) => void) => html`
+      <select
+        .value=${value}
+        ?disabled=${busy}
+        @change=${(event: Event) => onChange((event.target as HTMLSelectElement).value)}
+      >
+        ${(fanModes.includes(value) ? fanModes : [value, ...fanModes]).map(
+          (mode) =>
+            html`<option value=${mode} ?selected=${mode === value}>
+              ${fanModeLabel(this.hass, mode)}
+            </option>`,
+        )}
+      </select>
+    `;
+
+    return html`
+      <h4 class="subhead">${t(this.hass, "awayBoost")}</h4>
+      <label class="field">
+        <span>${t(this.hass, "awayBoost")}</span>
+        <input
+          type="checkbox"
+          .checked=${enabled}
+          ?disabled=${busy}
+          @change=${(event: Event) =>
+            save({ enabled: (event.target as HTMLInputElement).checked })}
+        />
+      </label>
+      <p class="hint">${t(this.hass, "awayBoostHint")}</p>
+      ${enabled
+        ? html`
+            <div class="field">
+              <span>${t(this.hass, "awayBoostStart")}</span>
+              ${stepper({
+                hass: this.hass,
+                value: start,
+                min: 5,
+                max: stop - 0.5,
+                step: 0.5,
+                disabled: busy,
+                onStep: (value) => save({ start_below: value }),
+              })}
+            </div>
+            <div class="field">
+              <span>${t(this.hass, "awayBoostStop")}</span>
+              ${stepper({
+                hass: this.hass,
+                value: stop,
+                min: start + 0.5,
+                max: 30,
+                step: 0.5,
+                disabled: busy,
+                onStep: (value) => save({ stop_at: value }),
+              })}
+            </div>
+            ${safety != null && start <= safety
+              ? html`<p class="hint warn">${t(this.hass, "awayBoostSafety")}</p>`
+              : nothing}
+            <div class="field">
+              <span>${t(this.hass, "awayBoostFan")}</span>
+              ${fanSelect(boostFan, (mode) => save({ boost_fan_mode: mode }))}
+            </div>
+            <div class="field">
+              <span>${t(this.hass, "awayIdleFan")}</span>
+              ${fanSelect(idleFan, (mode) => save({ idle_fan_mode: mode }))}
+            </div>
+            ${fanModes.length === 0
+              ? html`<p class="hint">${t(this.hass, "fanNone")}</p>`
+              : nothing}
+          `
+        : nothing}
+    `;
+  }
+
+  private async saveAwayBoost(payload: AwayBoostPayload): Promise<void> {
+    if (!this.hass || !this.zone?.entry_id) {
+      return;
+    }
+    this.pending = new Set(this.pending).add("away_boost");
+    try {
+      await this.hass.callWS({
+        type: "smart_heat_controller/set_away_boost",
+        entry_id: this.zone.entry_id,
+        ...payload,
+      });
+    } finally {
+      const next = new Set(this.pending);
+      next.delete("away_boost");
+      this.pending = next;
+      this.notifyRefresh();
+    }
   }
 
   private async saveHeatpumpProfile(
@@ -1052,29 +1185,12 @@ export class ShcSettingsDrawer extends LitElement {
   }
 }
 
-/** Friendly labels for the fan speeds Home Assistant may report. */
-const FAN_MODE_LABELS: Record<string, { sv: string; en: string }> = {
-  auto: { sv: "Auto", en: "Auto" },
-  quiet: { sv: "Tyst", en: "Quiet" },
-  low: { sv: "Låg", en: "Low" },
-  medium: { sv: "Medel", en: "Medium" },
-  medium_low: { sv: "Medel-låg", en: "Medium low" },
-  medium_high: { sv: "Medel-hög", en: "Medium high" },
-  high: { sv: "Hög", en: "High" },
-  strong: { sv: "Max", en: "Strong" },
-  "1": { sv: "1", en: "1" },
-  "2": { sv: "2", en: "2" },
-  "3": { sv: "3", en: "3" },
-  "4": { sv: "4", en: "4" },
-  "5": { sv: "5", en: "5" },
-};
-
-function fanModeLabel(hass: HomeAssistant | undefined, mode: string): string {
-  const entry = FAN_MODE_LABELS[mode.toLowerCase()];
-  if (!entry) {
-    return mode;
-  }
-  return language(hass) === "en" ? entry.en : entry.sv;
+interface AwayBoostPayload {
+  enabled: boolean;
+  start_below: number;
+  stop_at: number;
+  boost_fan_mode: string;
+  idle_fan_mode: string;
 }
 
 declare global {

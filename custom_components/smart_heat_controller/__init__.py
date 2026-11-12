@@ -31,7 +31,16 @@ from .const import (
     ATTR_MODE,
     AWAY_HVAC_KEEP,
     AWAY_HVAC_OPTIONS,
+    CONF_AWAY_BOOST,
+    CONF_AWAY_BOOST_FAN_MODE,
+    CONF_AWAY_BOOST_START_BELOW,
+    CONF_AWAY_BOOST_STOP_AT,
     CONF_AWAY_HVAC_MODE,
+    CONF_AWAY_IDLE_FAN_MODE,
+    DEFAULT_AWAY_BOOST_FAN_MODE,
+    DEFAULT_AWAY_BOOST_START_BELOW,
+    DEFAULT_AWAY_BOOST_STOP_AT,
+    DEFAULT_AWAY_IDLE_FAN_MODE,
     CONF_HEATPUMP_FAN_MODE,
     CONF_HEATPUMP_START_TARGET,
     CONF_PANEL_ENABLED,
@@ -474,12 +483,65 @@ def _async_register_websocket(hass: HomeAssistant) -> None:
         await coordinator.async_apply_heatpump_profile()
         connection.send_result(msg["id"], {"ok": True})
 
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/set_away_boost",
+            vol.Required(ATTR_ENTRY_ID): cv.string,
+            vol.Required("enabled"): cv.boolean,
+            vol.Optional("start_below"): vol.All(
+                vol.Coerce(float), vol.Range(min=5, max=30)
+            ),
+            vol.Optional("stop_at"): vol.All(
+                vol.Coerce(float), vol.Range(min=5, max=30)
+            ),
+            vol.Optional("boost_fan_mode"): vol.Any(None, cv.string),
+            vol.Optional("idle_fan_mode"): vol.Any(None, cv.string),
+        }
+    )
+    @websocket_api.async_response
+    async def _ws_set_away_boost(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+    ) -> None:
+        coordinator = _coordinator_for(hass, msg[ATTR_ENTRY_ID])
+        if coordinator is None:
+            connection.send_error(msg["id"], "not_found", "Unknown zone")
+            return
+        conf = coordinator.config_data
+        start = msg.get(
+            "start_below",
+            conf.get(CONF_AWAY_BOOST_START_BELOW, DEFAULT_AWAY_BOOST_START_BELOW),
+        )
+        stop = msg.get(
+            "stop_at", conf.get(CONF_AWAY_BOOST_STOP_AT, DEFAULT_AWAY_BOOST_STOP_AT)
+        )
+        if float(stop) <= float(start):
+            connection.send_error(
+                msg["id"],
+                "invalid_format",
+                "The stop temperature must be above the start temperature",
+            )
+            return
+        updates: dict = {
+            CONF_AWAY_BOOST: msg["enabled"],
+            CONF_AWAY_BOOST_START_BELOW: float(start),
+            CONF_AWAY_BOOST_STOP_AT: float(stop),
+        }
+        for key, option in (
+            ("boost_fan_mode", CONF_AWAY_BOOST_FAN_MODE),
+            ("idle_fan_mode", CONF_AWAY_IDLE_FAN_MODE),
+        ):
+            if key in msg:
+                updates[option] = msg[key]
+        await coordinator.async_set_options(updates)
+        connection.send_result(msg["id"], {"ok": True})
+
     websocket_api.async_register_command(hass, _ws_zones)
     websocket_api.async_register_command(hass, _ws_set_schedule)
     websocket_api.async_register_command(hass, _ws_set_vacation)
     websocket_api.async_register_command(hass, _ws_set_price)
     websocket_api.async_register_command(hass, _ws_set_away_hvac_mode)
     websocket_api.async_register_command(hass, _ws_set_heatpump_profile)
+    websocket_api.async_register_command(hass, _ws_set_away_boost)
     hass.data.setdefault(DOMAIN, {})["websocket_registered"] = True
 
 
@@ -596,13 +658,15 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
         "room_temperature": data.snapshot.room_temperature,
         "outside_temperature": data.outside_temperature,
         "radiator": {
-            "power_w": data.radiator.power_w,
+            "power_w": data.radiator.display_power_w,
+            "power_source": data.radiator.power_source,
             "kwh_today": data.radiator.kwh_today,
             "quality": data.radiator.quality,
             "available": data.radiator.available,
         },
         "heatpump": {
-            "power_w": data.heatpump.power_w,
+            "power_w": data.heatpump.display_power_w,
+            "power_source": data.heatpump.power_source,
             "kwh_today": data.heatpump.kwh_today,
             "quality": data.heatpump.quality,
             "available": data.heatpump.available,
@@ -658,6 +722,20 @@ def _zone_payload(coordinator: SmartHeatCoordinator) -> dict[str, Any]:
             "away_hvac_mode": config.get(CONF_AWAY_HVAC_MODE, AWAY_HVAC_KEEP),
             "heatpump_fan_mode": config.get(CONF_HEATPUMP_FAN_MODE),
             "heatpump_start_target": config.get(CONF_HEATPUMP_START_TARGET),
+            "away_boost": bool(config.get(CONF_AWAY_BOOST, False)),
+            "away_boost_start_below": config.get(
+                CONF_AWAY_BOOST_START_BELOW, DEFAULT_AWAY_BOOST_START_BELOW
+            ),
+            "away_boost_stop_at": config.get(
+                CONF_AWAY_BOOST_STOP_AT, DEFAULT_AWAY_BOOST_STOP_AT
+            ),
+            "away_boost_fan_mode": config.get(
+                CONF_AWAY_BOOST_FAN_MODE, DEFAULT_AWAY_BOOST_FAN_MODE
+            ),
+            "away_idle_fan_mode": config.get(
+                CONF_AWAY_IDLE_FAN_MODE, DEFAULT_AWAY_IDLE_FAN_MODE
+            ),
         },
+        "away_boost": data.decision.away_boost,
         "last_updated": data.last_updated.isoformat() if data.last_updated else None,
     }
