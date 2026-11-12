@@ -13,6 +13,7 @@ import {
 } from "./format";
 import type { StringKey } from "./format";
 import { stepper } from "./stepper";
+import { BUNDLE_VERSION } from "./version-guard";
 import { sharedStyles } from "./styles";
 import type {
   HomeAssistant,
@@ -757,6 +758,13 @@ export class ShcSettingsDrawer extends LitElement {
         <span>${t(this.hass, "version")}</span>
         <strong>${this.zone?.version ?? "–"}</strong>
       </div>
+      <div class="field readonly">
+        <span>${t(this.hass, "uiVersion")}</span>
+        <strong>${BUNDLE_VERSION}</strong>
+      </div>
+      ${this.zone?.version && this.zone.version !== BUNDLE_VERSION
+        ? html`<p class="hint warn">${t(this.hass, "uiVersionMismatch")}</p>`
+        : nothing}
     `;
   }
 

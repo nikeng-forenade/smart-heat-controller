@@ -1,5 +1,7 @@
 /** Card registration entry point. */
 
+// Must run before any element is defined.
+import "./version-guard";
 import { SmartHeatDashboard } from "./dashboard";
 import "./energy-chart";
 import "./panel";

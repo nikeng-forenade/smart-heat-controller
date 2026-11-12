@@ -40,6 +40,9 @@ const STRINGS = {
     powerNow: "Förbrukning just nu",
     todayShort: "Idag",
     fan: "Fläkt",
+    uiVersion: "Gränssnitt",
+    uiVersionMismatch:
+      "Appen kör ett äldre gränssnitt än servern. Stäng appen helt (Tvinga stopp) och rensa appens cache.",
     powerApprox: "≈ snitt senaste 30 min (från energimätaren)",
     powerNominal: "≈ uppskattat från märkeffekten",
     awayBoost: "Boost när ingen är hemma",
@@ -160,6 +163,9 @@ const STRINGS = {
     powerNow: "Power now",
     todayShort: "Today",
     fan: "Fan",
+    uiVersion: "Interface",
+    uiVersionMismatch:
+      "The app runs an older interface than the server. Force-stop the app and clear its cache.",
     powerApprox: "≈ average over the last 30 min (from the energy meter)",
     powerNominal: "≈ estimated from the rated power",
     awayBoost: "Boost while nobody is home",
