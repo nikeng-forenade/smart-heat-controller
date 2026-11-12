@@ -1,7 +1,15 @@
 import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+const manifest = JSON.parse(
+  readFileSync(resolve(__dirname, "../manifest.json"), "utf-8"),
+) as { version: string };
+
 export default defineConfig({
+  define: {
+    __SHC_VERSION__: JSON.stringify(manifest.version),
+  },
   build: {
     target: "es2022",
     outDir: resolve(__dirname, "dist"),
