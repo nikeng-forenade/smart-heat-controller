@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "smart_heat_controller"
 NAME: Final = "Smart Heat Controller"
-VERSION: Final = "0.1.15"
+VERSION: Final = "0.1.16"
 
 PLATFORMS: Final = (
     "binary_sensor",
@@ -37,6 +37,7 @@ DEFAULT_MIN_OFF_MINUTES: Final = 10
 DEFAULT_NOMINAL_POWER: Final = 800.0
 DEFAULT_TEMPERATURE_OFFSET: Final = 0.0
 DEFAULT_STALE_TIMEOUT_MINUTES: Final = 30
+DEFAULT_MANUAL_OVERRIDE_MINUTES: Final = 60
 DEFAULT_ABSENCE_DELAY_MINUTES: Final = 30
 DEFAULT_ARRIVAL_CONFIRM_MINUTES: Final = 0
 DEFAULT_BOOST_DURATION_MINUTES: Final = 60
@@ -81,6 +82,7 @@ CONF_MIN_SAFETY_TEMP: Final = "min_safety_temp"
 CONF_HYSTERESIS: Final = "hysteresis"
 CONF_MIN_ON_MINUTES: Final = "min_on_minutes"
 CONF_MIN_OFF_MINUTES: Final = "min_off_minutes"
+CONF_MANUAL_OVERRIDE_MINUTES: Final = "manual_override_minutes"
 CONF_BOOST_DURATION: Final = "boost_duration"
 CONF_DRY_RUN: Final = "dry_run"
 CONF_PRICE_SENSOR: Final = "price_sensor"

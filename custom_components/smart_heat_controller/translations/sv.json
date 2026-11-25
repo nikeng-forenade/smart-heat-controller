@@ -110,7 +110,8 @@
           "min_safety_temp": "Lägsta säkerhetstemperatur (°C)",
           "hysteresis": "Hysteres (°C)",
           "min_on_minutes": "Minsta ON-tid (min)",
-          "min_off_minutes": "Minsta OFF-tid (min)"
+          "min_off_minutes": "Minsta OFF-tid (min)",
+          "stale_timeout": "Tidsgräns för gammal data (min)"
         }
       },
       "presence": {
@@ -136,6 +137,7 @@
         "data": {
           "fallback_radiator": "Elementets beteende utan giltig temperatur",
           "backup_heating": "Reservvärme när värmepumpen är otillgänglig",
+          "manual_override_minutes": "Tidsgräns för manuell elementstyrning (min)",
           "dry_run": "Torrkörning (beräkna beslut, agera inte)",
           "away_hvac_mode": "Värmepumpen när ingen är hemma",
           "away_boost": "Boost när ingen är hemma: värmepumpen värmer ett kallt tomt hus i stället för elementet",

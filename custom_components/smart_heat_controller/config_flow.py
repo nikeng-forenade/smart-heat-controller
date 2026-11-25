@@ -32,6 +32,7 @@ from .const import (
     CONF_HOME_TARGET,
     CONF_HYSTERESIS,
     CONF_IMAGE_URL,
+    CONF_MANUAL_OVERRIDE_MINUTES,
     CONF_MIN_OFF_MINUTES,
     CONF_MIN_ON_MINUTES,
     CONF_MIN_SAFETY_TEMP,
@@ -63,6 +64,7 @@ from .const import (
     DEFAULT_BOOST_DURATION_MINUTES,
     DEFAULT_HOME_TARGET,
     DEFAULT_HYSTERESIS,
+    DEFAULT_MANUAL_OVERRIDE_MINUTES,
     DEFAULT_MIN_OFF_MINUTES,
     DEFAULT_MIN_ON_MINUTES,
     DEFAULT_MIN_SAFETY_TEMP,
@@ -663,6 +665,20 @@ class SmartHeatOptionsFlow(OptionsFlow):
                         min=0, max=120, step=1, unit_of_measurement="min"
                     )
                 ),
+                vol.Required(
+                    CONF_STALE_TIMEOUT,
+                    default=current.get(
+                        CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT_MINUTES
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=5,
+                        max=240,
+                        step=5,
+                        unit_of_measurement="min",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -806,6 +822,21 @@ class SmartHeatOptionsFlow(OptionsFlow):
                     selector.SelectSelectorConfig(
                         options=[item.value for item in BackupHeating],
                         mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(
+                    CONF_MANUAL_OVERRIDE_MINUTES,
+                    default=current.get(
+                        CONF_MANUAL_OVERRIDE_MINUTES,
+                        DEFAULT_MANUAL_OVERRIDE_MINUTES,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=720,
+                        step=5,
+                        unit_of_measurement="min",
+                        mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
                 vol.Required(

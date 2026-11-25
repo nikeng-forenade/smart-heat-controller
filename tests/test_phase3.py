@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.smart_heat_controller.const import DOMAIN
@@ -135,7 +138,7 @@ async def test_plug_switched_on_by_hand_is_honoured(
 ) -> None:
     """Saga presses the Shelly button; the controller must not undo it."""
     coordinator = hass.data[DOMAIN][loaded.entry_id]
-    _set_room(hass, "21.0")
+    _set_room(hass, "19.7")
     coordinator.zone_state.radiator_on = False
     coordinator.zone_state.radiator_changed_at = None
     coordinator._last_radiator_command_at = None
@@ -146,6 +149,7 @@ async def test_plug_switched_on_by_hand_is_honoured(
     coordinator = await _refresh(hass, loaded)
 
     assert coordinator.zone_state.radiator_manual is True
+    assert coordinator.zone_state.radiator_manual_until is not None
     assert coordinator.data.decision.radiator_on is None
     assert coordinator.data.decision.reason == "manual_radiator_override"
     assert hass.states.get("switch.shelly").state == "on"
@@ -162,7 +166,7 @@ async def test_manual_plug_is_switched_off_when_leaving(
 
     hass.services.async_register("switch", "turn_off", _record)
     coordinator = hass.data[DOMAIN][loaded.entry_id]
-    _set_room(hass, "21.0")
+    _set_room(hass, "19.7")
     hass.states.async_set("switch.shelly", "off")
     coordinator.zone_state.radiator_on = False
     coordinator.zone_state.radiator_changed_at = None
@@ -187,7 +191,7 @@ async def test_manual_plug_switch_off_releases_the_override(
     hass: HomeAssistant, loaded
 ) -> None:
     coordinator = hass.data[DOMAIN][loaded.entry_id]
-    _set_room(hass, "21.0")
+    _set_room(hass, "19.7")
     hass.states.async_set("switch.shelly", "off")
     coordinator.zone_state.radiator_on = False
     coordinator.zone_state.radiator_changed_at = None
@@ -197,11 +201,41 @@ async def test_manual_plug_switch_off_releases_the_override(
     hass.states.async_set("switch.shelly", "on")
     coordinator = await _refresh(hass, loaded)
     assert coordinator.zone_state.radiator_manual is True
+    assert coordinator.zone_state.radiator_manual_until is not None
 
     hass.states.async_set("switch.shelly", "off")
     coordinator = await _refresh(hass, loaded)
 
     assert coordinator.zone_state.radiator_manual is False
+    assert coordinator.zone_state.radiator_manual_until is None
+
+
+async def test_expired_manual_override_is_released(
+    hass: HomeAssistant, loaded
+) -> None:
+    """A forgotten plug switch-on must not heat forever."""
+    commanded: list[str] = []
+
+    def _record(call) -> None:
+        commanded.append(call.service)
+
+    hass.services.async_register("switch", "turn_off", _record)
+    coordinator = hass.data[DOMAIN][loaded.entry_id]
+    _set_room(hass, "20.5")
+    hass.states.async_set("switch.shelly", "on")
+    coordinator.zone_state.radiator_on = True
+    coordinator.zone_state.radiator_changed_at = None
+    coordinator.zone_state.radiator_manual = True
+    coordinator.zone_state.radiator_manual_until = (
+        dt_util.now() - timedelta(minutes=1)
+    )
+    coordinator._last_radiator_command_at = None
+
+    coordinator = await _refresh(hass, loaded)
+
+    assert "turn_off" in commanded
+    assert coordinator.zone_state.radiator_manual is False
+    assert coordinator.data.decision.reason == "temperature_above_off_threshold"
 
 
 async def test_away_switches_the_pump_to_fan_and_back(

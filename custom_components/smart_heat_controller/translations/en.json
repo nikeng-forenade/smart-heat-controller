@@ -113,7 +113,8 @@
           "min_safety_temp": "Minimum safety temperature (°C)",
           "hysteresis": "Hysteresis (°C)",
           "min_on_minutes": "Minimum ON time (min)",
-          "min_off_minutes": "Minimum OFF time (min)"
+          "min_off_minutes": "Minimum OFF time (min)",
+          "stale_timeout": "Stale data timeout (min)"
         }
       },
       "presence": {
@@ -139,6 +140,7 @@
         "data": {
           "fallback_radiator": "Radiator behaviour without valid temperature",
           "backup_heating": "Backup heating when the heat pump is unavailable",
+          "manual_override_minutes": "Manual radiator override timeout (min)",
           "dry_run": "Dry run (compute decisions, do not act)",
           "away_hvac_mode": "Heat pump when nobody is home",
           "away_boost": "Away boost: let the heat pump heat a cold empty house instead of the radiator",

@@ -83,6 +83,9 @@ class ZoneConfig:
     hysteresis: float = 0.5
     min_on: timedelta = timedelta(minutes=10)
     min_off: timedelta = timedelta(minutes=10)
+    # A plug switched on at the device is honoured for this long, after which
+    # normal control resumes instead of heating until somebody notices.
+    manual_override: timedelta = timedelta(minutes=60)
     stale_after: timedelta = timedelta(minutes=30)
     comfort_offset: float = 1.0
     boost_offset: float = 2.0
@@ -138,6 +141,7 @@ class ZoneState:
     # Set when the plug was switched at the device itself: the user is heating
     # the room by hand, so the controller must not fight it until it is released.
     radiator_manual: bool = False
+    radiator_manual_until: datetime | None = None
     heatpump_target_command: float | None = None
     # HVAC mode the controller applied while away, so it can be undone when
     # somebody comes home. None means the controller changed nothing.
@@ -163,6 +167,7 @@ class ZoneState:
             "radiator_on": self.radiator_on,
             "radiator_changed_at": _iso(self.radiator_changed_at),
             "radiator_manual": self.radiator_manual,
+            "radiator_manual_until": _iso(self.radiator_manual_until),
             "heatpump_target_command": self.heatpump_target_command,
             "heatpump_hvac_applied": self.heatpump_hvac_applied,
             "away_boost_active": self.away_boost_active,
@@ -189,6 +194,7 @@ class ZoneState:
             radiator_on=bool(data.get("radiator_on", False)),
             radiator_changed_at=_parse(data.get("radiator_changed_at")),
             radiator_manual=bool(data.get("radiator_manual", False)),
+            radiator_manual_until=_parse(data.get("radiator_manual_until")),
             heatpump_target_command=_opt_float(data.get("heatpump_target_command")),
             heatpump_hvac_applied=(
                 str(data["heatpump_hvac_applied"])
@@ -614,6 +620,18 @@ def _evaluate_radiator(
             case FallbackRadiator.OFF:
                 return _guard_switch(config, snapshot, state, False, safety=True, reason="fallback_temperature_off")
             case _:
+                # A short dropout should not toggle the radiator, but a source
+                # that has been silent far beyond the stale timeout must not be
+                # allowed to keep heating indefinitely.
+                age = snapshot.temperature_age()
+                if age is not None and age > config.stale_after * 2:
+                    return _guard_switch(
+                        config,
+                        snapshot,
+                        state,
+                        False,
+                        reason="fallback_temperature_hold_expired",
+                    )
                 return None, "fallback_temperature_hold"
 
     temperature = snapshot.room_temperature
@@ -627,29 +645,38 @@ def _evaluate_radiator(
 
     if mode is Mode.AWAY:
         state.radiator_manual = False
+        state.radiator_manual_until = None
         return _guard_switch(config, snapshot, state, False, reason="away")
 
     if snapshot.heatpump_cooling:
         # The user asked for cooling or dehumidifying. Adding heat would fight
         # the unit, so keep the radiator out of the picture entirely.
         state.radiator_manual = False
+        state.radiator_manual_until = None
         return _guard_switch(
             config, snapshot, state, False, reason="heatpump_cooling_radiator_off"
         )
 
+    on_below, off_above = _radiator_band(config, snapshot, mode)
+
     if state.radiator_manual:
-        # Somebody switched the plug at the device. Honouring that keeps the
-        # controller from fighting a person standing next to the radiator; the
-        # away rule above still wins so an empty house is never heated.
-        return None, "manual_radiator_override"
+        # Somebody switched the plug at the device. Honour that request, but
+        # never let it keep the radiator running above the off threshold, and
+        # let it expire so a forgotten switch cannot heat for days.
+        expired = (
+            state.radiator_manual_until is None
+            or snapshot.now >= state.radiator_manual_until
+        )
+        if not expired and temperature < off_above:
+            return None, "manual_radiator_override"
+        state.radiator_manual = False
+        state.radiator_manual_until = None
 
     if not snapshot.heatpump_supplying_heat and config.backup_heating is not BackupHeating.RADIATOR:
         # Nobody wants the radiator stepping in for a pump that is not heating.
         return _guard_switch(
             config, snapshot, state, False, reason="heatpump_not_heating_radiator_off"
         )
-
-    on_below, off_above = _radiator_band(config, snapshot, mode)
 
     if temperature <= on_below:
         return _guard_switch(config, snapshot, state, True, reason="temperature_below_on_threshold")

@@ -56,6 +56,7 @@ from .const import (
     CONF_HEATPUMP_START_TARGET,
     CONF_HOME_TARGET,
     CONF_HYSTERESIS,
+    CONF_MANUAL_OVERRIDE_MINUTES,
     CONF_MIN_OFF_MINUTES,
     CONF_MIN_ON_MINUTES,
     CONF_MIN_SAFETY_TEMP,
@@ -85,6 +86,7 @@ from .const import (
     CONF_ZONE_NAME,
     DEFAULT_PRICE_MAX_ADJUST,
     DEFAULT_PRICE_MIN_COMFORT,
+    DEFAULT_MANUAL_OVERRIDE_MINUTES,
     AWAY_HVAC_KEEP,
     AWAY_HVAC_HEAT,
     DOMAIN,
@@ -255,6 +257,14 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             hysteresis=float(conf.get(CONF_HYSTERESIS, 0.5)),
             min_on=timedelta(minutes=float(conf.get(CONF_MIN_ON_MINUTES, 10))),
             min_off=timedelta(minutes=float(conf.get(CONF_MIN_OFF_MINUTES, 10))),
+            manual_override=timedelta(
+                minutes=float(
+                    conf.get(
+                        CONF_MANUAL_OVERRIDE_MINUTES,
+                        DEFAULT_MANUAL_OVERRIDE_MINUTES,
+                    )
+                )
+            ),
             stale_after=timedelta(minutes=float(conf.get(CONF_STALE_TIMEOUT, 30))),
             fallback_radiator=FallbackRadiator(
                 str(conf.get(CONF_FALLBACK_RADIATOR, FallbackRadiator.HOLD.value))
@@ -553,7 +563,7 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
             if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 return None, None
             try:
-                return float(state.state), state.last_updated
+                return float(state.state), self._state_reported_at(state)
             except (TypeError, ValueError):
                 return None, None
 
@@ -564,9 +574,22 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         if current is None:
             return None, None
         try:
-            return float(current), climate_state.last_updated
+            return float(current), self._state_reported_at(climate_state)
         except (TypeError, ValueError):
             return None, None
+
+    @staticmethod
+    def _state_reported_at(state) -> datetime | None:
+        """Newest of ``last_updated`` and ``last_reported``.
+
+        Integrations that only write when a value changes leave
+        ``last_updated`` untouched; ``last_reported`` still moves whenever the
+        entity is actually written.
+        """
+        candidates = [state.last_updated, getattr(state, "last_reported", None)]
+        return max(
+            (value for value in candidates if value is not None), default=None
+        )
 
     def _read_outside_temperature(self) -> float | None:
         """Best available outdoor reading.
@@ -682,7 +705,14 @@ class SmartHeatCoordinator(DataUpdateCoordinator[ZoneData]):
         self._state.radiator_on = snapshot.radiator_is_on
         self._state.radiator_changed_at = now
         # A plug switched on by hand is a person asking for heat right now.
+        # Remember until when, so a plug left on across a restart cannot keep
+        # the radiator heating forever.
         self._state.radiator_manual = snapshot.radiator_is_on
+        self._state.radiator_manual_until = (
+            now + self.zone_config.manual_override
+            if snapshot.radiator_is_on
+            else None
+        )
 
     def _heatpump_is_heating(self) -> bool:
         """True when the heat pump is set up to actually deliver heat."""

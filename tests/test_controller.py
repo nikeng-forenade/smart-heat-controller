@@ -148,6 +148,106 @@ def test_stale_temperature_uses_configured_fallback():
     assert decision.heatpump_target is None
 
 
+def test_stale_temperature_hold_expires_and_switches_off():
+    config = ZoneConfig(fallback_radiator=FallbackRadiator.HOLD)
+    state = ZoneState(
+        selected_mode=Mode.HOME,
+        radiator_on=True,
+        radiator_changed_at=NOW - timedelta(hours=3),
+    )
+    snapshot = make_snapshot(temperature_updated=NOW - timedelta(hours=2))
+
+    decision, new_state = evaluate(config, snapshot, state)
+
+    assert Fault.TEMPERATURE_STALE in decision.faults
+    assert decision.radiator_on is False
+    assert decision.reason == "fallback_temperature_hold_expired"
+
+
+def test_stale_temperature_hold_keeps_state_during_a_short_outage():
+    config = ZoneConfig(fallback_radiator=FallbackRadiator.HOLD)
+    state = ZoneState(
+        selected_mode=Mode.HOME,
+        radiator_on=True,
+        radiator_changed_at=NOW - timedelta(hours=1),
+    )
+    snapshot = make_snapshot(temperature_updated=NOW - timedelta(minutes=40))
+
+    decision, _ = evaluate(config, snapshot, state)
+
+    assert decision.radiator_on is None
+    assert decision.reason == "fallback_temperature_hold"
+
+
+def test_manual_override_is_honoured_inside_the_band():
+    config = ZoneConfig()
+    state = ZoneState(
+        selected_mode=Mode.HOME,
+        radiator_on=True,
+        radiator_manual=True,
+        radiator_manual_until=NOW + timedelta(minutes=30),
+        radiator_changed_at=NOW - timedelta(minutes=30),
+    )
+
+    decision, new_state = evaluate(config, make_snapshot(room_temperature=19.5), state)
+
+    assert decision.radiator_on is None
+    assert decision.reason == "manual_radiator_override"
+    assert new_state.radiator_manual is True
+
+
+def test_manual_override_never_heats_above_the_off_threshold():
+    config = ZoneConfig()
+    state = ZoneState(
+        selected_mode=Mode.HOME,
+        radiator_on=True,
+        radiator_manual=True,
+        radiator_manual_until=NOW + timedelta(minutes=30),
+        radiator_changed_at=NOW - timedelta(minutes=30),
+    )
+
+    decision, new_state = evaluate(config, make_snapshot(room_temperature=20.5), state)
+
+    assert decision.radiator_on is False
+    assert decision.reason == "temperature_above_off_threshold"
+    assert new_state.radiator_manual is False
+    assert new_state.radiator_manual_until is None
+
+
+def test_manual_override_expires_after_its_timeout():
+    config = ZoneConfig()
+    state = ZoneState(
+        selected_mode=Mode.HOME,
+        radiator_on=True,
+        radiator_manual=True,
+        radiator_manual_until=NOW - timedelta(minutes=1),
+        radiator_changed_at=NOW - timedelta(minutes=90),
+    )
+
+    decision, new_state = evaluate(config, make_snapshot(room_temperature=20.5), state)
+
+    assert decision.radiator_on is False
+    assert decision.reason == "temperature_above_off_threshold"
+    assert new_state.radiator_manual is False
+    assert new_state.radiator_manual_until is None
+
+
+def test_manual_override_without_a_deadline_is_released():
+    """State persisted by an older version had no expiry and must not stick."""
+    config = ZoneConfig()
+    state = ZoneState(
+        selected_mode=Mode.HOME,
+        radiator_on=True,
+        radiator_manual=True,
+        radiator_changed_at=NOW - timedelta(minutes=90),
+    )
+
+    decision, new_state = evaluate(config, make_snapshot(room_temperature=20.5), state)
+
+    assert decision.radiator_on is False
+    assert new_state.radiator_manual is False
+
+
 def test_missing_temperature_reports_fault():
     config = ZoneConfig()
     decision, _ = evaluate(

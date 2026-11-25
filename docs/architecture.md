@@ -106,8 +106,15 @@ three degrees instead of letting the two heat sources fight each other.
 A radiator switch changed outside the controller is adopted on the next refresh
 (its runtime clock restarts from that moment), so the guards always act on the
 real device state rather than a stale belief about it. A plug switched on by
-hand is treated as a deliberate request and left alone until it is switched off
-again or the zone goes away.
+hand is treated as a deliberate request, but only for the configured
+`manual_override_minutes` (default 60) and never above the OFF threshold: after
+that the normal band takes over again. A plug switched off by hand releases the
+override immediately.
+
+When the temperature source is unusable, the configured fallback applies. A
+`hold` fallback keeps the current radiator state through a short dropout, but
+after twice the stale timeout it switches the radiator OFF instead of heating
+an unmeasured room indefinitely.
 
 When the heat pump is not heating, `backup_heating: radiator` lets the radiator
 run on exactly the same configured band as it does alongside the pump, so what
@@ -237,7 +244,7 @@ dash, and both temperature sensors can be re-pointed later in the options flow
 | Fault | Behaviour |
 |---|---|
 | `temperature_missing` | No setpoint change, no temperature-driven switching |
-| `temperature_stale` | Falls back to the configured radiator policy (`hold`/`on`/`off`) |
+| `temperature_stale` | Falls back to the configured radiator policy (`hold`/`on`/`off`); `hold` expires to OFF after twice the stale timeout |
 | `heat_pump_unavailable` | Setpoint held, optional radiator back-up |
 | `radiator_unavailable` | Never commanded, never assumed OFF |
 | `presence_unknown` | Mode follows the configured unknown-presence policy |

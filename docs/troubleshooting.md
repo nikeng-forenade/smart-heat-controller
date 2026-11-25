@@ -41,6 +41,10 @@ recorder history of the energy sensor for outages.
   `sensor.*_last_decision` for `..._blocked_by_min_runtime`.
 - `switch.*_dry_run` must be `off`.
 - Mode `Disabled` or `Manual` never commands the radiator.
+- `manual_radiator_override` means the plug was switched on at the device. It is
+  honoured for **Options → Safety and fallback → Manual radiator override
+  timeout** and is released early when the room reaches the OFF threshold or the
+  plug is switched off by hand.
 
 ## Temperature is stale
 
@@ -49,6 +53,16 @@ recorder history of the energy sensor for outages.
 updating, or that the heat pump exposes `current_temperature`. Increase the
 stale timeout in **Options → Temperatures and timing** if the source updates
 slowly.
+
+Some cloud integrations (for example MELCloud) only write a new state when the
+value changes, so a room that sits at exactly 21.0 °C for a long time can look
+stale even though the device is online. The fault is harmless for a short while:
+`hold` keeps the last state. After twice the stale timeout it turns the radiator
+OFF rather than heat without a measurement.
+
+The outside temperature is context for the energy comparison only. It is never
+used to decide whether the radiator should run; that decision is based on the
+room sensor, the configured band and the presence/mode rules.
 
 ## Mode keeps flipping to Away
 
